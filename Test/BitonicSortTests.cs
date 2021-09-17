@@ -10,7 +10,7 @@ namespace Test
 {
     public class BitonicSortTests
     {
-        static readonly int[] BitonicSizes = { 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128 };
+        static readonly int[] BitonicSizes = { 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128 };        
 
         static IEnumerable<TestCaseData> PreSorted =>
             from size in BitonicSizes
@@ -23,7 +23,7 @@ namespace Test
         static IEnumerable<TestCaseData> HalfMinValue =>
             from size in BitonicSizes
             from seed in new[] {666, 333, 999, 314159}
-            select new ParityTests.SortTestCaseData(() => GenerateData(size, seed, int.MinValue, 0.5)).SetArgDisplayNames($"{size:000}/{seed}/0.5min");
+            select new ParityTests.SortTestCaseData(() => GenerateData(size, seed, 0, 0.5)).SetArgDisplayNames($"{size:000}/{seed}/0.5min");
 
         static IEnumerable<TestCaseData> HalfMaxValue =>
             from size in BitonicSizes
@@ -52,15 +52,159 @@ namespace Test
         [TestCaseSource(nameof(HalfMaxValue))]
         [TestCaseSource(nameof(ConstantSeed))]
         [TestCaseSource(nameof(TimeSeed))]
-        public unsafe void BitonicSortTest(DataGenerator generator)
+        public unsafe void BitonicSortIntTest(DataGenerator generator)
         {
             var (randomData, sortedData, reproContext) = generator();
 
-            fixed (int* p = &randomData[0]) {
-                BitonicSort<int>.Sort(p, randomData.Length);
+            fixed (int* p = &randomData[0])
+            {
+                BitonicSortAvx<int>.Sort(p, randomData.Length);
             }
 
-            Assert.That(randomData, Is.Ordered,             reproContext);
+            Assert.That(randomData, Is.Ordered, reproContext);
+            Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
+        }
+
+
+        [TestCaseSource(nameof(PreSorted))]
+        [TestCaseSource(nameof(HalfMinValue))]
+        [TestCaseSource(nameof(HalfMaxValue))]
+        [TestCaseSource(nameof(ConstantSeed))]
+        [TestCaseSource(nameof(TimeSeed))]
+        public unsafe void BitonicSortLongTest(DataGenerator generator)
+        {
+            var (randomIntData, sortedIntData, reproContext) = generator();
+
+            int maxLongBitonicSize = 64;
+            if (randomIntData.Length > maxLongBitonicSize)
+                return;
+
+            long[] randomData = new long[randomIntData.Length];
+            long[] sortedData = new long[sortedIntData.Length];
+            for (int i = 0; i < randomIntData.Length; i++)
+            {
+                randomData[i] = randomIntData[i];
+                sortedData[i] = sortedIntData[i];
+            }
+
+            fixed (long* p = &randomData[0])
+            {
+                BitonicSortAvx<long>.Sort(p, randomData.Length);
+            }
+
+            Assert.That(randomData, Is.Ordered, reproContext);
+            Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
+        }
+
+        [TestCaseSource(nameof(PreSorted))]
+        [TestCaseSource(nameof(HalfMinValue))]
+        [TestCaseSource(nameof(HalfMaxValue))]
+        [TestCaseSource(nameof(ConstantSeed))]
+        [TestCaseSource(nameof(TimeSeed))]
+        public unsafe void BitonicSortULongTest(DataGenerator generator)
+        {
+            var (randomIntData, sortedIntData, reproContext) = generator();
+
+            int maxLongBitonicSize = 64;
+            if (randomIntData.Length > maxLongBitonicSize)
+                return;
+
+            ulong[] randomData = new ulong[randomIntData.Length];
+            ulong[] sortedData = new ulong[sortedIntData.Length];
+            for (int i = 0; i < randomIntData.Length; i++)
+            {
+                randomData[i] = (ulong)randomIntData[i];
+                sortedData[i] = (ulong)sortedIntData[i];
+            }
+
+            fixed (ulong* p = &randomData[0])
+            {
+                BitonicSortAvx< ulong>.Sort(p, randomData.Length);
+            }
+
+            Assert.That(randomData, Is.Ordered, reproContext);
+            Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
+        }
+
+        [TestCaseSource(nameof(PreSorted))]
+        [TestCaseSource(nameof(HalfMinValue))]
+        [TestCaseSource(nameof(HalfMaxValue))]
+        [TestCaseSource(nameof(ConstantSeed))]
+        [TestCaseSource(nameof(TimeSeed))]
+        public unsafe void BitonicSortUIntTest(DataGenerator generator)
+        {
+            var (randomIntData, sortedIntData, reproContext) = generator();
+
+            uint[] randomData = new uint[randomIntData.Length];
+            uint[] sortedData = new uint[sortedIntData.Length];
+            for (int i = 0; i < randomIntData.Length; i++)
+            {
+                randomData[i] = (uint)randomIntData[i];
+                sortedData[i] = (uint)sortedIntData[i];
+            }
+
+            fixed (uint* p = &randomData[0])
+            {
+                BitonicSortAvx<uint>.Sort(p, randomData.Length);
+            }
+
+            Assert.That(randomData, Is.Ordered, reproContext);
+            Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
+        }
+
+        [TestCaseSource(nameof(PreSorted))]
+        [TestCaseSource(nameof(HalfMinValue))]
+        [TestCaseSource(nameof(HalfMaxValue))]
+        [TestCaseSource(nameof(ConstantSeed))]
+        [TestCaseSource(nameof(TimeSeed))]
+        public unsafe void BitonicSortFloatTest(DataGenerator generator)
+        {
+            var (randomIntData, sortedIntData, reproContext) = generator();
+
+            float[] randomData = new float[randomIntData.Length];
+            float[] sortedData = new float[sortedIntData.Length];
+            for (int i = 0; i < randomIntData.Length; i++)
+            {
+                randomData[i] = randomIntData[i];
+                sortedData[i] = sortedIntData[i];
+            }
+
+            fixed (float* p = &randomData[0])
+            {
+                BitonicSortAvx<long>.Sort(p, randomData.Length);
+            }
+
+            Assert.That(randomData, Is.Ordered, reproContext);
+            Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
+        }
+
+        [TestCaseSource(nameof(PreSorted))]
+        [TestCaseSource(nameof(HalfMinValue))]
+        [TestCaseSource(nameof(HalfMaxValue))]
+        [TestCaseSource(nameof(ConstantSeed))]
+        [TestCaseSource(nameof(TimeSeed))]
+        public unsafe void BitonicSortDoubleTest(DataGenerator generator)
+        {
+            var (randomIntData, sortedIntData, reproContext) = generator();
+
+            int maxLongBitonicSize = 64;
+            if (randomIntData.Length > maxLongBitonicSize)
+                return;
+
+            double[] randomData = new double[randomIntData.Length];
+            double[] sortedData = new double[sortedIntData.Length];
+            for (int i = 0; i < randomIntData.Length; i++)
+            {
+                randomData[i] = randomIntData[i];
+                sortedData[i] = sortedIntData[i];
+            }
+
+            fixed (double* p = &randomData[0])
+            {
+                BitonicSortAvx<long>.Sort(p, randomData.Length);
+            }
+
+            Assert.That(randomData, Is.Ordered, reproContext);
             Assert.That(randomData, Is.EqualTo(sortedData), reproContext);
         }
 

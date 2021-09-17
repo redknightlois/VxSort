@@ -9,13 +9,17 @@ namespace Test {
     public class DataGeneration
     {
         internal static (int[] randomData, int[] sortedData, string reproContext) GenerateData(
-            int size, int seed, int forcedValue = -1, double forcedValueRate = double.NaN, int modulo = int.MaxValue, bool dontSort = false)
+            int size, int seed, int forcedValue = 0, double forcedValueRate = double.NaN, int modulo = int.MaxValue, bool dontSort = false)
         {
             var r = new Random(seed);
             var data = new int[size];
             for (var i = 0; i < size; ++i)
-                data[i] = double.IsNaN(forcedValueRate) ? r.Next() % modulo :
-                    r.NextDouble() > forcedValueRate ? forcedValue : (r.Next() % modulo);
+            {
+                var rndValue = r.Next();
+
+                data[i] = double.IsNaN(forcedValueRate) ? rndValue % modulo :
+                    r.NextDouble() > forcedValueRate ? forcedValue : (rndValue % modulo);
+            }
 
             int[] sorted = null;
             if (!dontSort) {

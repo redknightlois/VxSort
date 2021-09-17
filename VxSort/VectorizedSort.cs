@@ -254,7 +254,7 @@ namespace VxSort
                     var extraSpaceNeeded = nextLength - length;
                     var fakeLeft = left - extraSpaceNeeded;
                     if (fakeLeft >= _startPtr) {
-                        BitonicSort<int>.Sort(fakeLeft, nextLength);
+                        BitonicSortAvx<int>.Sort(fakeLeft, nextLength);
                     }
                     else {
                         InsertionSort(left, right);

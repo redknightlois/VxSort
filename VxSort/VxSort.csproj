@@ -40,4 +40,7 @@
         <DependentUpon>BitonicSort.Generated.tt</DependentUpon>
       </Compile>
     </ItemGroup>
+    <ItemGroup>
+      <Folder Include="codegen\" />
+    </ItemGroup>
 </Project>
