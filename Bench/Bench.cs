@@ -27,19 +27,19 @@ namespace Bench
                 for (int iteration = 0; iteration < 20000; iteration++)
                 {
                     startValue += rnd.Next(30);
-                    var values = ValuesGenerator.ArrayOfUniqueValues<int>(startValue);
+                    var values = ValuesGenerator.ArrayOfUniqueValues<long>(startValue);
                     for (int i = 0; i < values.Length; i++)
                         values[i] = values[i] % 999;
 
                     //Console.WriteLine("Values=[{0}]", string.Join(",", values));
 
                     //Console.WriteLine("---- Reference ----");
-                    var array = (int[])values.Clone();
-                    VectorizedSort.UnstableSort(array);
+                    //var array = (int[])values.Clone();
+                    //VectorizedSort.UnstableSort(array);
 
                     //Console.WriteLine("---- New ----");
-                    var newValues = (int[])values.Clone();
-                    fixed (int* valuesPtr = newValues)
+                    var newValues = (long[])values.Clone();
+                    fixed (long* valuesPtr = newValues)
                     {
                         var il = valuesPtr;
                         var rl = il + values.Length - 1;

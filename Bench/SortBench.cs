@@ -5,6 +5,7 @@ using Bench.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Extensions;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
@@ -69,13 +70,14 @@ namespace Bench
     [InvocationCount(InvocationsPerIterationValue)]
     [Config(typeof(MediumConfig))]
     //[DatatableJsonExporter]
-    public class UnstableSort<T> : SortBenchBase<T> where T : unmanaged, IComparable<T>
+    //[InliningDiagnoser(true, allowedNamespaces: new []{"VxSort"})]
+    public class IntSort<T> : SortBenchBase<T> where T : unmanaged, IComparable<T>
     {
         const int InvocationsPerIterationValue = 3;
 
         protected override int InvocationsPerIteration => InvocationsPerIterationValue;
 
-        [Benchmark(Baseline=true)]
+        [Benchmark(Baseline = true)]
         public void ArraySort() => Array.Sort(_arrays[_iterationIndex++]);
 
         [Benchmark]
@@ -83,5 +85,22 @@ namespace Bench
 
         [Benchmark]
         public void NewVxSort() => Sort.Run(_arrays[_iterationIndex++]);
+    }
+
+
+    [GenericTypeArguments(typeof(long))] // value type
+    [InvocationCount(InvocationsPerIterationValue)]
+    [Config(typeof(MediumConfig))]
+    public class LongSortBench<T> : SortBenchBase<T> where T : unmanaged, IComparable<T>
+    {
+        const int InvocationsPerIterationValue = 3;
+
+        protected override int InvocationsPerIteration => InvocationsPerIterationValue;
+
+        [Benchmark(Baseline = true)]
+        public void Reference() => Array.Sort(_arrays[_iterationIndex++]);
+
+        [Benchmark]
+        public void VxSort() => Sort.Run(_arrays[_iterationIndex++]);
     }
 }

@@ -104,6 +104,8 @@ namespace Bench.Utils
                 return (T)(object)(char)random.Next(char.MinValue, char.MaxValue);
             if (typeof(T) == typeof(int))
                 return (T)(object)random.Next();
+            if (typeof(T) == typeof(long))
+                return (T)(object)(long)random.Next();
             if (typeof(T) == typeof(double))
                 return (T)(object)random.NextDouble();
             if (typeof(T) == typeof(bool))

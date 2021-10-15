@@ -147,9 +147,11 @@ namespace VxSort
 
     def get_cmpgt_mask(self, vector, pivot):
         t = self.type
-        if t == 'int':
+        if t == 'int' or t == 'uint' or t == 'float':
             return f"""(uint)MoveMask(CompareGreaterThan({vector}, {pivot}).AsSingle())"""
-        raise Exception('NotImplemented')
+
+        return f"""(uint)MoveMask(CompareGreaterThan({vector}, {pivot}).AsDouble())"""
+
 
     def get_popcnt(self, value, type='int64'):
         if type == 'int64':
@@ -165,9 +167,15 @@ namespace VxSort
 
     def get_partition_vector(self, vector, basePtr, mask):
         t = self.type
-        if t == 'int' or t == 'uint':
-            return f"""PermuteVar8x32({vector}, ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8)))"""
 
+        if t == 'int':
+            return f"""PermuteVar8x32({vector}, ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8)))"""
+        if t == 'uint':
+            return f"""PermuteVar8x32({vector}.AsInt32(), ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8))).AsUInt32()"""
+        if t == 'long':
+            return f"""PermuteVar8x32({vector}.AsSingle(), ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8))).AsInt64()"""
+        if t == 'ulong':
+            return f"""PermuteVar8x32({vector}.AsSingle(), ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8))).AsUInt64()"""
         raise Exception('NotImplemented')
 
     def get_load_vector(self, ptr):
@@ -182,6 +190,14 @@ namespace VxSort
 
     def generate_partition_block(self, f):
 
+        def generate_comparison_operations(t):
+            if t == 'int' or t == 'long' or t == 'float' or t == 'double':
+                s = f"""var mask = (ulong){self.get_cmpgt_mask('dataVec', 'p')};"""
+            if t == 'uint' or t == 'ulong':
+                s = f"""var additionConstant = Vector256.Create(unchecked(({t})-1));
+                var mask = (ulong){self.get_cmpgt_mask('Add(dataVec, additionConstant).AsInt64()', 'Add(p, additionConstant).AsInt64()')};"""
+            return s
+
         t = self.type
         method_name = f"""
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -192,7 +208,7 @@ namespace VxSort
             s = f"""
             {method_name}
             {{
-                var mask = (ulong){self.get_cmpgt_mask('dataVec', 'p')};
+                {generate_comparison_operations(t)}
     
                 // Looks kinda silly, the (ulong) (uint) thingy right?
                 // Well, it's making a yucky lemonade out of lemons is what it is.
@@ -244,6 +260,18 @@ namespace VxSort
         g = self
         t = self.type
         compress_writes = self.compress_writes
+
+        def generate_comparison_operations(t):
+            if t == 'int' or t == 'long' or t == 'float' or t == 'double':
+                s = f"""var rtMask = {self.get_cmpgt_mask('RT0', 'p')}; //default(MT).get_cmpgt_mask(RT0, p);
+                var ltMask = {self.get_cmpgt_mask('LT0', 'p')}; //default(MT).get_cmpgt_mask(LT0, p);"""
+            if t == 'uint' or t == 'ulong':
+                s = f"""var additionConstant = Vector256.Create(unchecked(({t})-1));
+                var signedP = Add(p, additionConstant).AsInt64();
+                var rtMask = {self.get_cmpgt_mask('Add(RT0, additionConstant).AsInt64()', 'signedP')}; //default(MT).get_cmpgt_mask(RT0, p);
+                var ltMask = {self.get_cmpgt_mask('Add(LT0, additionConstant).AsInt64()', 'signedP')}; //default(MT).get_cmpgt_mask(LT0, p);"""
+
+            return s
 
         def generate_permutations_without_compress():
 
@@ -309,8 +337,7 @@ namespace VxSort
         
                 var RT0 = {self.get_load_vector('preAlignedRight')};
                 var LT0 = {self.get_load_vector('preAlignedLeft')};
-                var rtMask = {self.get_cmpgt_mask('RT0', 'p')}; //default(MT).get_cmpgt_mask(RT0, p);
-                var ltMask = {self.get_cmpgt_mask('LT0', 'p')}; //default(MT).get_cmpgt_mask(LT0, p);
+                {generate_comparison_operations(t)}
                 var rtPopCountRightPart = Math.Max({self.get_popcnt('rtMask', 'int32')}, (uint)rightAlign);       
                 var rtPopCountLeftPart = N - rtPopCountRightPart;
                 var ltPopCountRightPart = {self.get_popcnt('ltMask', 'int32')}; // default(MT).popcnt(ltMask);
