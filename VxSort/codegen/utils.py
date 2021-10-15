@@ -1,8 +1,3 @@
-##
-## Licensed to the .NET Foundation under one or more agreements.
-## The .NET Foundation licenses this file to you under the MIT license.
-##
-
 native_size_map = {
     "int": 4,
     "uint": 4,
@@ -11,7 +6,6 @@ native_size_map = {
     "ulong": 8,
     "double": 8,
 }
-
 
 def next_power_of_2(v):
     v = v - 1

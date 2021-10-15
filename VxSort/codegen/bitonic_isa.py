@@ -1,8 +1,3 @@
-##
-## Licensed to the .NET Foundation under one or more agreements.
-## The .NET Foundation licenses this file to you under the MIT license.
-##
-
 from abc import ABC, ABCMeta, abstractmethod
 
 from utils import next_power_of_2
@@ -19,7 +14,7 @@ class BitonicISA(ABC, metaclass=ABCMeta):
         pass
 
     def largest_merge_variant_needed(self):
-        return next_power_of_2(self.max_bitonic_sort_vectors()) / 2;
+        return next_power_of_2(self.max_bitonic_sort_vectors) / 2;
 
     @abstractmethod
     def vector_size(self):
@@ -70,3 +65,5 @@ class BitonicISA(ABC, metaclass=ABCMeta):
     @abstractmethod
     def generate_master_entry_point(self, f):
         pass
+
+

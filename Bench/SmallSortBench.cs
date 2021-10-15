@@ -1,15 +1,15 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Bench.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Extensions;
-using BenchmarkDotNet.Horology;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
-using VxSort;
+using Perfolizer.Horology;
+using VxSort.Reference;
 
 namespace Bench
 {
@@ -17,9 +17,10 @@ namespace Bench
     {
         public SmallSortConfig()
         {
-            SummaryStyle = new SummaryStyle(true, SizeUnit.GB, TimeUnit.Nanosecond);
-            Add(Job.LongRun);
-            Add(new TimePerNColumn());
+            
+            SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Nanosecond);
+            AddJob(Job.LongRun);
+            AddColumn(new TimePerNColumn());
         }
     }
 

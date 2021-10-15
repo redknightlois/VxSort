@@ -1,14 +1,16 @@
 using System;
+using System.Globalization;
 using System.Net.Http.Headers;
 using Bench.Utils;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Extensions;
-using BenchmarkDotNet.Horology;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
+using Perfolizer.Horology;
 using VxSort;
+using VxSort.Reference;
 
 namespace Bench
 {
@@ -16,9 +18,9 @@ namespace Bench
     {
         public LongConfig()
         {
-            SummaryStyle = new SummaryStyle(true, SizeUnit.GB, TimeUnit.Microsecond);
-            Add(Job.LongRun);
-            Add(new TimePerNColumn());
+            SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
+            AddJob(Job.LongRun);
+            //AddColumn(new TimePerNColumn());
         }
     }
 
@@ -26,9 +28,9 @@ namespace Bench
     {
         public MediumConfig()
         {
-            SummaryStyle = new SummaryStyle(true, SizeUnit.GB, TimeUnit.Microsecond);
-            Add(Job.MediumRun);
-            Add(new TimePerNColumn());
+            SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
+            AddJob(Job.MediumRun);
+            //AddColumn(new TimePerNColumn());
         }
     }
 
@@ -36,9 +38,9 @@ namespace Bench
     {
         public ShortConfig()
         {
-            SummaryStyle = new SummaryStyle(true, SizeUnit.GB, TimeUnit.Microsecond);
-            Add(Job.ShortRun);
-            Add(new TimePerNColumn());
+            SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
+            AddJob(Job.ShortRun);
+            //AddColumn(new TimePerNColumn());
         }
     }
 
@@ -66,7 +68,7 @@ namespace Bench
     [GenericTypeArguments(typeof(int))] // value type
     [InvocationCount(InvocationsPerIterationValue)]
     [Config(typeof(MediumConfig))]
-    [DatatableJsonExporter]
+    //[DatatableJsonExporter]
     public class UnstableSort<T> : SortBenchBase<T> where T : unmanaged, IComparable<T>
     {
         const int InvocationsPerIterationValue = 3;
@@ -78,5 +80,8 @@ namespace Bench
 
         [Benchmark]
         public void VxSort() => VectorizedSort.UnstableSort(_arrays[_iterationIndex++]);
+
+        [Benchmark]
+        public void NewVxSort() => Sort.Run(_arrays[_iterationIndex++]);
     }
 }

@@ -58,7 +58,7 @@ namespace Test
 
             fixed (int* p = &randomData[0])
             {
-                BitonicSortAvx<int>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);
@@ -89,7 +89,7 @@ namespace Test
 
             fixed (long* p = &randomData[0])
             {
-                BitonicSortAvx<long>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);
@@ -119,7 +119,7 @@ namespace Test
 
             fixed (ulong* p = &randomData[0])
             {
-                BitonicSortAvx< ulong>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);
@@ -145,7 +145,7 @@ namespace Test
 
             fixed (uint* p = &randomData[0])
             {
-                BitonicSortAvx<uint>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);
@@ -171,7 +171,7 @@ namespace Test
 
             fixed (float* p = &randomData[0])
             {
-                BitonicSortAvx<long>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);
@@ -201,7 +201,7 @@ namespace Test
 
             fixed (double* p = &randomData[0])
             {
-                BitonicSortAvx<long>.Sort(p, randomData.Length);
+                BitonicSort.Sort(p, randomData.Length);
             }
 
             Assert.That(randomData, Is.Ordered, reproContext);

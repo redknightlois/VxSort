@@ -4,10 +4,9 @@ using System.Linq;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using NUnit.Framework;
-using VxSort;
 using static System.Runtime.Intrinsics.X86.Avx;
 using static System.Runtime.Intrinsics.X86.Avx2;
-using static VxSort.BytePermutationTables;
+using static VxSort.Reference.BytePermutationTables;
 
 namespace Test
 {

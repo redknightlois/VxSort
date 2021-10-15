@@ -1,8 +1,3 @@
-##
-## Licensed to the .NET Foundation under one or more agreements.
-## The .NET Foundation licenses this file to you under the MIT license.
-##
-
 #!/usr/bin/env python3
 #
 # This is a tool to generate the bitonic sorter code that is used for small arrays.
@@ -17,9 +12,10 @@ import argparse
 import os
 from enum import Enum
 
-from avx2 import AVX2BitonicISA
-from avx512 import AVX512BitonicISA
+from bitonic_avx2 import AVX2BitonicISA
+from bitonic_avx512 import AVX512BitonicISA
 from bitonic_isa import BitonicISA
+from configuration import Configuration
 
 BitonicISA.register(AVX2BitonicISA)
 #BitonicISA.register(AVX512BitonicISA)
@@ -36,23 +32,23 @@ def get_generator_supported_types(vector_isa):
         raise Exception(f"Non-supported vector machine-type: {vector_isa}")
 
 
-def get_generator(vector_isa, type):
+def get_generator(vector_isa, type, configuration):
     if isinstance(vector_isa, str):
         vector_isa = VectorISA[vector_isa]
     if vector_isa == VectorISA.AVX2:
-        return AVX2BitonicISA(type)
+        return AVX2BitonicISA(type, configuration)
     elif vector_isa == VectorISA.AVX512:
         return AVX512BitonicISA(type)
     else:
         raise Exception(f"Non-supported vector machine-type: {vector_isa}")
 
 
-def generate_per_type(f_header, type, vector_isa, break_inline):
-    g = get_generator(vector_isa, type)
+def generate_per_type(f_header, type, vector_isa, break_inline, configuration):
+    g = get_generator(vector_isa, type, configuration)
     g.generate_prologue(f_header)
     g.generate_1v_sorters(f_header, ascending=True)
     g.generate_1v_sorters(f_header, ascending=False)
-    for width in range(2, g.max_bitonic_sort_vectors() + 1):
+    for width in range(2, g.max_bitonic_sort_vectors + 1):
 
         # Allow breaking the inline chain once in a while (configurable)
         if break_inline == 0 or width % break_inline != 0:
@@ -68,7 +64,6 @@ def generate_per_type(f_header, type, vector_isa, break_inline):
     g.generate_entry_points(f_header)
     g.generate_master_entry_point(f_header)
     g.generate_epilogue(f_header)
-
 
 class VectorISA(Enum):
     AVX2 = 'AVX2'
@@ -97,13 +92,15 @@ def generate_all_types():
     if 'all' in opts.vector_isa:
         opts.vector_isa = list(VectorISA)
 
+    config = Configuration()
+
     for isa in opts.vector_isa:
         for t in get_generator_supported_types(isa):
-            filename = f"bitonic_sort.{isa}.{t}.generated"
+            filename = f"BitonicSort.{isa}.{t}.generated"
             print(f"Generating {filename}.{{cs}}")
             h_filename = os.path.join(opts.output_dir, filename + ".cs")
             with open(h_filename, "w") as f_header:
-                generate_per_type(f_header, t, isa, opts.break_inline)
+                generate_per_type(f_header, t, isa, opts.break_inline, config)
 
 if __name__ == '__main__':
     generate_all_types()

@@ -5,7 +5,7 @@ using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using VxSortResearch.Utils;
 
-namespace VxSort
+namespace VxSort.Reference
 {
     public static unsafe class BytePermutationTables
     {
@@ -269,20 +269,20 @@ namespace VxSort
         };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static Vector256<int> GetBytePermutationAligned(byte * pBase, uint index)
+        internal static Vector256<int> GetBytePermutationAligned(byte* pBase, uint index)
         {
             Debug.Assert(index <= 255);
             Debug.Assert(pBase != null);
-            Debug.Assert(((ulong) (pBase + index * 8)) % 8 == 0);
+            Debug.Assert((ulong)(pBase + index * 8) % 8 == 0);
             return Avx2.ConvertToVector256Int32(pBase + index * 8);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe Vector256<int> GetBytePermutationAligned(byte * pBase, ulong index)
+        internal static unsafe Vector256<int> GetBytePermutationAligned(byte* pBase, ulong index)
         {
             Debug.Assert(index <= 255);
             Debug.Assert(pBase != null);
-            Debug.Assert(((ulong) (pBase + index * 8)) % 8 == 0);
+            Debug.Assert((ulong)(pBase + index * 8) % 8 == 0);
             return Avx2.ConvertToVector256Int32(pBase + index * 8);
         }
 
@@ -292,7 +292,7 @@ namespace VxSort
 
         static BytePermutationTables()
         {
-            BytePermTableAlignedPtr                 = (byte*) BytePermTable.AlignSpan(PAGE_SIZE);
+            BytePermTableAlignedPtr = (byte*)BytePermTable.AlignSpan(PAGE_SIZE);
         }
     }
 }

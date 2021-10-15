@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using NUnit.Framework;
-using VxSort;
+using VxSort.Reference;
 using static Test.DataGeneration;
 using DataGenerator = System.Func<(int[] data, int[] sortedData, string reproContext)>;
 

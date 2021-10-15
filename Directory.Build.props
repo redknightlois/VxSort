@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <LangVersion>8</LangVersion>
+    <LangVersion>9</LangVersion>
     <DebugType>pdbonly</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <NoWarn>CA1810;CA1303;CA2207;NU5105</NoWarn>

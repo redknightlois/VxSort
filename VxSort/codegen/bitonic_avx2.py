@@ -1,8 +1,3 @@
-##
-## Licensed to the .NET Foundation under one or more agreements.
-## The .NET Foundation licenses this file to you under the MIT license.
-##
-
 import os
 from datetime import datetime
 
@@ -11,7 +6,7 @@ from bitonic_isa import BitonicISA
 
 
 class AVX2BitonicISA(BitonicISA):
-    def __init__(self, type):
+    def __init__(self, type, configuration):
         self.vector_size_in_bytes = 32
 
         self.type = type
@@ -30,8 +25,11 @@ class AVX2BitonicISA(BitonicISA):
             "double": "Int64",
         }
 
+        self._max_bitonic_sort_vectors = configuration.max_bitonic_sort_vectors
+
+    @property
     def max_bitonic_sort_vectors(self):
-        return 16
+        return self._max_bitonic_sort_vectors
 
     def vector_size(self):
         return self.bitonic_size_map[self.type]
@@ -261,11 +259,12 @@ using static System.Runtime.Intrinsics.X86.Avx2;
 using static System.Runtime.Intrinsics.X86.Sse2;
 using static System.Runtime.Intrinsics.X86.Sse41;
 using static System.Runtime.Intrinsics.X86.Sse42;
+using static VxSort.VectorExtensions;
 
 namespace VxSort
 {{
     using V = Vector256<{self.type}>;
-    static unsafe partial class BitonicSortAvx<T>
+    static unsafe partial class BitonicSort
     {{
 """
         print(s, file=f)
@@ -447,7 +446,7 @@ namespace VxSort
     def generate_entry_points(self, f):
         type = self.type
         g = self
-        for m in range(1, g.max_bitonic_sort_vectors() + 1):
+        for m in range(1, g.max_bitonic_sort_vectors + 1):
             mask = f"""ConvertToVector256{self.bitonic_type_map[type]}(LoadVector128((sbyte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(mask_table_{self.vector_size()})) + remainder * V.Count))"""
             if type == "double":
                 mask = f"""i2d({mask})"""
@@ -487,25 +486,29 @@ namespace VxSort
 
     def generate_master_entry_point(self, f_header):
 
+        def generate_sorters_entry_list():
+            s = ""
+            for m in range(1, self.max_bitonic_sort_vectors + 1):
+                s += f"&sort_{m:02d}v_alt, "
+                if m % 3 == 0:
+                    s += '\n        '
+            return s
+
         t = self.type
         s = f"""
-    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static void Sort({t}* ptr, int length)"""
-        print(s, file=f_header)
-
-        s = f"""    {{
-        var fullvlength = length / V.Count;
-        var remainder = (int) (length - fullvlength * V.Count);
-        var v = fullvlength + ((remainder > 0) ? 1 : 0);
         
-        switch (v) {{"""
+        private readonly static delegate*<{t}*, int, void>[] {t}Functions = new delegate*<{t}*, int, void>[]
+        {{
+            null,
+            {generate_sorters_entry_list()}
+        }};
+                                            
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static void Sort({t}* ptr, int length)
+        {{
+            uint fullvlength = (uint)length / (uint)V.Count;
+            var remainder = (int) (length - fullvlength * V.Count);
+            var v = fullvlength + ((remainder > 0) ? 1 : 0);
+            {t}Functions[v](ptr, remainder);
+        }}"""
         print(s, file=f_header)
-
-        for m in range(1, self.max_bitonic_sort_vectors() + 1):
-            s = f"        case {m}: sort_{m:02d}v_alt(ptr, remainder); break;"
-            print(s, file=f_header)
-
-        print("         }", file=f_header)
-        print("     }", file=f_header)
-
-        pass

@@ -1,10 +1,10 @@
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using BenchmarkDotNet.Columns;
-using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Horology;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
+using Perfolizer.Horology;
 
 namespace Bench.Utils
 {
@@ -17,7 +17,8 @@ namespace Bench.Utils
             unit = unit ?? TimeUnit.GetBestTimeUnit(value);
             double unitValue = TimeUnit.Convert(value, TimeUnit.Nanosecond, unit);
             if (showUnit) {
-                string unitName = unit.Name.ToString(encoding ?? Encoding.ASCII).PadLeft(unitNameWidth);
+      
+                string unitName = unit.Name.PadLeft(unitNameWidth);
                 return $"{unitValue.ToStr(format)} {unitName}";
             }
 
@@ -34,7 +35,7 @@ namespace Bench.Utils
             //     string.Format(System.IFormatProvider, string, object)          // .NET 4.6
             // Unfortunately, Mono doesn't have the second overload (with object instead of params object[]).
             var args = new object[] {value};
-            return string.Format(HostEnvironmentInfo.MainCultureInfo, $"{{0:{format}}}", args);
+            return string.Format(CultureInfo.InvariantCulture, $"{{0:{format}}}", args);
         }
 
         public static string ToTimeStr(this double value, TimeUnit unit, Encoding encoding, string format = "N4",
@@ -71,7 +72,7 @@ namespace Bench.Utils
         {
             var valueOfN = (int) benchmarkCase.Parameters.Items.Single(p => p.Name == "N").Value;
             var timePerN = summary[benchmarkCase].ResultStatistics.Mean / valueOfN;
-            return timePerN.ToTimeStr(benchmarkCase.Config.Encoding, TimeUnit.GetBestTimeUnit(timePerN));
+            return timePerN.ToTimeStr(TimeUnit.GetBestTimeUnit(timePerN));
         }
 
         public override string ToString() => ColumnName;

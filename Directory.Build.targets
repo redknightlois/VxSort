@@ -1,9 +1,5 @@
 <Project>
   <ItemGroup>
-    <PackageReference Update="Fody" Version="6.0.8">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Update="LocalsInit.Fody" Version="1.1.0">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -23,7 +19,7 @@
     <PackageReference Update="NUnit" Version="3.12.0" />
     <PackageReference Update="NUnit3TestAdapter" Version="3.16.1" />
     <PackageReference Update="Microsoft.NET.Test.Sdk" Version="16.4.0" />
-    <PackageReference Update="BenchmarkDotNet" Version="0.12.0" />
+    <PackageReference Update="BenchmarkDotNet" Version="0.13.1" />
     <PackageReference Update="System.CommandLine.DragonFruit" Version="0.3.0-alpha.20070.2" />
   </ItemGroup>
 </Project>

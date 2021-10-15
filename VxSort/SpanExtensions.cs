@@ -8,7 +8,7 @@ namespace VxSortResearch.Utils
 {
     public static class SpanExtensions
     {
-        public static unsafe void * AlignSpan(this ReadOnlySpan<byte> unalignedSpan, ulong alignment)
+        public static unsafe void *AlignSpan(this ReadOnlySpan<byte> unalignedSpan, ulong alignment)
         {
             var alignedPtr = (byte*) Marshal.AllocHGlobal(unalignedSpan.Length + (int) alignment);
             var x = alignedPtr;
