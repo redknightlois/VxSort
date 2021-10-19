@@ -47,10 +47,9 @@ namespace VxSort
             where T : unmanaged
         {
             if (typeof(T) == typeof(int))
-            {
+            {                
                 int* il = (int*)left;
                 int* ir = (int*)right;
-
                 uint length = (uint)(ir - il);
 
                 int N = Vector256<int>.Count;
@@ -60,8 +59,6 @@ namespace VxSort
                     BitonicSort.Sort(il, (int)length);
 
                 var depthLimit = 2 * FloorLog2PlusOne(length);
-                //var sorter = new VectorizedSort<Avx2InstructionSet<AvxInt32MachineParameters>, AvxInt32MachineParameters>(il, ir);
-
                 var sorter = new Avx2VectorizedSort(il, ir);
                 sorter.sort(il, ir, 0, 0, REALIGN_BOTH, depthLimit);
                 return;
@@ -70,14 +67,17 @@ namespace VxSort
             {
                 long* il = (long*)left;
                 long* ir = (long*)right;
+                int length = (int)(ir - il);
 
-                uint length = (uint)(ir - il);
-                if (length < 16)
-                    throw new NotSupportedException();
+                int N = Vector256<long>.Count;
+                int SMALL_SORT_THRESHOLD_ELEMENTS = 20 * N;
 
-                var depthLimit = 2 * FloorLog2PlusOne(length);
-                //var sorter = new VectorizedSort<Avx2InstructionSet<AvxInt64MachineParameters>, AvxInt64MachineParameters>(il, ir);
-                //sorter.sort(il, ir, 0, 0, REALIGN_BOTH, depthLimit);
+                if (length < SMALL_SORT_THRESHOLD_ELEMENTS)
+                    BitonicSort.Sort(il, (int)length);
+
+                var depthLimit = 2 * FloorLog2PlusOne((uint)length);
+                var sorter = new Avx2VectorizedSort(il, ir);
+                sorter.sort(il, ir, int.MinValue, int.MaxValue, REALIGN_BOTH, depthLimit);
                 return;
             }
             throw new NotSupportedException();

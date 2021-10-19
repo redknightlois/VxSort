@@ -11,8 +11,9 @@ class AVX2SortingISA(SortingISA):
         self.vector_size_in_bytes = 32
 
         self.type = type
-        # TODO: Implement this.
         self.compress_writes = False
+        self.can_pack = configuration.can_pack
+        self.shift = 0
 
         self.bitonic_size_map = {}
 
@@ -21,11 +22,16 @@ class AVX2SortingISA(SortingISA):
 
         self.sorting_type_map = {
             "int": "Int32",
-            "uint": "Int32",
+            "uint": "UInt32",
             "float": "Int32",
             "long": "Int64",
-            "ulong": "Int64",
+            "ulong": "UInt64",
             "double": "Int64",
+        }
+
+        self.pack_type_map = {
+            "long": "int",
+            "ulong": "uint",
         }
 
         self.unroll = configuration.unroll
@@ -34,6 +40,8 @@ class AVX2SortingISA(SortingISA):
             self.unroll2 = 2
         if self.unroll2 == 1:
             self.unroll2 = None
+
+        self.pack_unroll = configuration.pack_unroll
 
         self.max_bitonic_sort_vectors = configuration.max_bitonic_sort_vectors
         self.do_prefetch = configuration.do_prefetch
@@ -121,6 +129,7 @@ namespace VxSort
         print(s, file=f)
         self.generate_scalar_alignments(f)
         self.generate_vectorized_alignments(f)
+
         self.generate_partition_block(f)
 
         self.generate_load_and_partition_vectors(f, 1)
@@ -133,6 +142,9 @@ namespace VxSort
             self.generate_vectorized_partition(f, self.safe_inner_unroll)
 
         self.generate_sort_primitives(f)
+
+        self.generate_pack(f)
+        self.generate_unpack(f)
         self.generate_sort(f)
         print(f"""    }}""", file=f)
 
@@ -178,8 +190,18 @@ namespace VxSort
             return f"""PermuteVar8x32({vector}.AsSingle(), ConvertToVector256Int32(LoadVector128({basePtr} + {mask} * 8))).AsUInt64()"""
         raise Exception('NotImplemented')
 
-    def get_load_vector(self, ptr):
-        return f"""LoadAlignedVector256({ptr})"""
+    def get_load_vector(self, ptr, aligned=True):
+        return f"""LoadAlignedVector256({ptr})""" if aligned else f"""LoadVector256({ptr})"""
+
+    def get_shift_n_sub(self, shift, v, sub):
+        prefix = F"({v} >> {shift})" if shift > 0 else v
+        return F"""{prefix} - {sub}"""
+
+    def get_unshift_n_add(self, shift, _from, add):
+        s = F'({add} + {_from})'
+        if shift > 0:
+            s = F'({s} << {shift})'
+        return s
 
     def get_permutation_table_ptr(self):
         table_name = 'perm_table_64'
@@ -259,7 +281,7 @@ namespace VxSort
     def generate_vectorized_alignments(self, f):
         g = self
         t = self.type
-        compress_writes = self.compress_writes
+        compress_writes = self.compress_writes and (t == 'long' or t == 'ulong')
 
         def generate_comparison_operations(t):
             if t == 'int' or t == 'long' or t == 'float' or t == 'double':
@@ -817,7 +839,309 @@ namespace VxSort
         print(s, file=f)
 
     def generate_try_pack(self):
-        return ""
+
+        t = self.type
+        if self.sorting_type_map[t] == 'UInt32' or self.sorting_type_map[t] == 'Int32' or t == 'double' or not self.can_pack:
+            return ""
+        tt = self.pack_type_map[self.type]
+
+        return F"""    
+            if (right_hint - left_hint < uint.MaxValue << {self.shift})
+            {{
+                {self.generate_if_debug(F'''Console.WriteLine($"Pre:Unpacked[{{string.Join(',', new Span<{t}>(({t}*)left, length).ToArray())}}]");''')}
+                Pack(left, length, left_hint);
+                {self.generate_if_debug(F'''Console.WriteLine($"Pre:Packed[{{string.Join(',', new Span<{tt}>(({tt}*)left, length).ToArray())}}]");''')}
+                
+                {tt}* il = ({tt}*) left;
+                {tt}* ir = il + (length - 1);
+                var sorter = new Avx2VectorizedSort(il, ir);
+                sorter.sort(il, ir, 0, 0, Sort.REALIGN_BOTH, depth_limit);
+                
+                {self.generate_if_debug(F'''Console.WriteLine($"Post:Packed[{{string.Join(',', new Span<{tt}>(({tt}*)left, length).ToArray())}}]");''')}
+                Unpack(left, length, left_hint);
+                {self.generate_if_debug(F'''Console.WriteLine($"Post:Unpacked[{{string.Join(',', new Span<{t}>(({t}*)left, length).ToArray())}}]");''')}
+                return;
+            }}"""
+
+    def generate_pack(self, f):
+
+        def generate_pack_vectorized(tto, type_map, shift, respect_packing_order):
+
+            if respect_packing_order:
+                raise Exception("NotSupported")
+
+            packing_instruction = F"""
+            byte _MM_PERM_CDAB = 0xB1;
+            var di1 = d1.AsInt32();
+            var di2 = d2.AsInt32();
+            di2 = Shuffle(di2, _MM_PERM_CDAB);
+            return Blend(di1, di2, 0b10101010).As{type_map}();
+"""
+
+            s = F"""        
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private static Vector256<{tto}> pack_vectorized(V baseVec, V d1, V d2)
+        {{
+            byte Shift = {shift};
+                        
+            if (Shift > 0) 
+            {{ 
+                // JIT will compile it in/out based on the constant value of Shift
+                d1 = ShiftRightLogical(d1, Shift);
+                d2 = ShiftRightLogical(d2, Shift);
+            }}
+            
+            d1 = Subtract(d1, baseVec);
+            d2 = Subtract(d2, baseVec);            
+            {packing_instruction}
+        }}"""
+            return s
+
+        def generate_unroll(i):
+            s = ""
+            for r in range(i):
+                idx = r * 2
+                s += F"""
+                var d{idx} = {self.get_load_vector(f'({t}*)(memv_read + NFrom * {idx})')};
+                var d{idx + 1} = {self.get_load_vector(f'({t}*)(memv_read + NFrom * {idx + 1})')};                                
+"""
+            s += "\n                "
+            for r in range(i):
+                idx = r * 2
+                s += F"""{self.get_store_vec(F'''memv_write + NTo * {r}''', F'''pack_vectorized(baseVec, d{idx}, d{idx+1})''')};                
+                """
+            return s
+
+        t = self.type
+        if self.sorting_type_map[t] == 'UInt32' or self.sorting_type_map[t] == 'Int32' or t == 'double':
+            return
+
+        tt = self.pack_type_map[t]
+        s = F"""
+        
+        {generate_pack_vectorized(tt, self.sorting_type_map[tt], self.shift, False)}
+        
+        private static void Pack(void* mem, int len, {t} @base)
+        {{
+            var NFrom = V.Count;
+            var NTo = Vector256<{tt}>.Count;
+            var Unroll = {self.pack_unroll};
+        
+            var offset = {self.get_shift_n_sub(self.shift, '@base', f'''{tt}.MinValue''') };
+            var baseVec = {self.get_broadcast('offset')};
+            
+            var pre_aligned_mem = ({t}*) ( (ulong)mem & ~Sort.ALIGN_MASK );
+            var mem_read = ({t}*) mem;
+            var mem_write = ({tt}*) mem;
+            
+            if ( len < NFrom )
+            {{
+                while ( len > 0 )
+                {{
+                    len--;
+                    
+                    *mem_write = ({tt})( {self.get_shift_n_sub(self.shift, '*mem_read', "offset") } );
+                    mem_read++;
+                    mem_write++;
+                }}
+                return;
+            }}
+                    
+            // We have at least
+            // one vector worth of data to handle
+            // Let's try to align to vector size first
+            
+            if (pre_aligned_mem < mem) 
+            {{
+                var alignment_point = pre_aligned_mem + NFrom;
+                len -= (int) (alignment_point - mem_read);
+                while (mem_read < alignment_point) 
+                {{
+                    *mem_write = ({tt})( {self.get_shift_n_sub(self.shift, '*mem_read', "offset") } );
+                    mem_read++;
+                    mem_write++;
+                }}
+            }}
+            
+            Debug.Assert(((ulong)(mem_read) & Sort.ALIGN_MASK) == 0);
+            
+            var memv_read = mem_read;
+            var memv_write = mem_write;
+            
+            var lenv = len / NFrom;
+            len -= (lenv * NFrom);
+            while (lenv >= 2 * Unroll) 
+            {{
+                Debug.Assert( memv_read >= memv_write);                
+                { generate_unroll(self.pack_unroll) }                
+                memv_read += Unroll * 2 * NFrom;
+                memv_write += Unroll * NTo;
+                lenv -= 2 * Unroll;
+            }}
+            
+            if ( Unroll > 1 )
+            {{                                
+                while (lenv >= 2) 
+                {{
+                    Debug.Assert( memv_read >= memv_write );
+    
+                    var d01 = {self.get_load_vector(f'memv_read + NFrom * 0')}; 
+                    var d02 = {self.get_load_vector(f'memv_read + NFrom * 1')};
+                    {self.get_store_vec("memv_write + NTo * 0 ", "pack_vectorized(baseVec, d01, d02)")};
+                                        
+                    memv_read += 2 * NFrom;
+                    memv_write += NTo;
+                    lenv -= 2;
+                }}
+            }}
+            
+            len += lenv * NFrom;
+
+            mem_read = memv_read;
+            mem_write = memv_write;
+            
+            while (len-- > 0) 
+            {{
+                *mem_write = ({tt})( {self.get_shift_n_sub(self.shift, '*mem_read', "offset") } );
+                mem_read++;
+                mem_write++;
+            }}
+        }} 
+        """
+        print(s, file=f)
+
+    def generate_unpack(self, f):
+
+        t = self.type
+        if self.sorting_type_map[t] == 'UInt32' or self.sorting_type_map[t] == 'Int32' or t == 'double':
+            return
+
+        def generate_unpack_vectorized(tto, type_map, shift, respect_packing_order):
+
+            if respect_packing_order:
+                raise Exception("NotSupported")
+
+            unpacking_instruction = F"""
+            u0 = ConvertToVector256Int64(ExtractVector128(d0, 0)).As{type_map}();
+            u1 = ConvertToVector256Int64(ExtractVector128(d0, 1)).As{type_map}();               
+    """
+
+            s = F"""        
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private static void unpack_vectorized(V baseVec, Vector256<{tto}> d0, out V u0, out V u1)
+        {{
+            byte Shift = {shift};
+
+            {unpacking_instruction}    
+            
+            u0 = Add(u0, baseVec);
+            u1 = Add(u1, baseVec);
+            
+            if (Shift > 0)
+            {{
+                u0 = ShiftLeftLogical(u0, Shift);
+                u1 = ShiftLeftLogical(u1, Shift);
+            }}     
+        }}"""
+            return s
+
+        def generate_unroll(i):
+            s = ""
+            for r in range(i):
+                s += F"""
+                var d{r} = {self.get_load_vector(f'({tt}*) (memv_read - NTo * {r})', aligned=False)};"""
+            s += "\n                "
+            for r in range(i):
+                idx = r * 2
+                s += F"""
+                unpack_vectorized(baseVec, d{r}, out var u{idx}, out var u{idx + 1});
+                {self.get_store_vec(F'''memv_write - NTo * {r} + NFrom * 0''', F'''u{idx}''')};
+                {self.get_store_vec(F'''memv_write - NTo * {r} + NFrom * 1''', F'''u{idx+1}''')};                
+                    """
+            return s
+
+        tt = self.pack_type_map[t]
+        s = F"""
+        
+        {generate_unpack_vectorized(tt, self.sorting_type_map[t], self.shift, False)}
+                
+        private static void Unpack(void* mem, int len, {t} @base)
+        {{
+            var NFrom = V.Count;
+            var NTo = Vector256<{tt}>.Count;
+            var Unroll = {self.pack_unroll};
+        
+            var offset = {self.get_shift_n_sub(self.shift, '@base', f'''{tt}.MinValue''') };
+            var baseVec = {self.get_broadcast('offset')};
+        
+            var mem_read = (({tt}*) mem) + len;
+            var mem_write = (({t}*) mem) + len;
+            
+            if ( len < NTo )
+            {{
+                while ( len-- != 0 )
+                {{                
+                    *(--mem_write) = {self.get_unshift_n_add(self.shift, '*(--mem_read)', "offset")};                    
+                }}
+                return;
+            }}
+            
+            var pre_aligned_mem = ({tt}*) ( (ulong)mem_read & ~Sort.ALIGN_MASK );           
+            if (pre_aligned_mem < mem_read) 
+            {{
+                len -= (int)(mem_read - pre_aligned_mem);
+                while (mem_read > pre_aligned_mem) 
+                {{
+                   *(--mem_write) = {self.get_unshift_n_add(self.shift, '*(--mem_read)', "offset")};
+                }}
+            }}
+            
+            Debug.Assert(((ulong)(mem_read) & Sort.ALIGN_MASK) == 0);
+            
+            var lenv = len / NTo;           
+            len -= lenv * NTo;
+                        
+            var memv_read = mem_read - NTo;
+            var memv_write = mem_write - 2 * NFrom;            
+            while (lenv >= Unroll) 
+            {{
+                Debug.Assert( memv_read <= memv_write);                                
+                { generate_unroll(self.pack_unroll) }                 
+                memv_read -= Unroll * NTo;
+                memv_write -= Unroll * (2 * NFrom);
+                lenv -= Unroll;
+            }}
+            
+            if ( Unroll > 1 )
+            {{                                
+                while (lenv >= 1) 
+                {{
+                    Debug.Assert( memv_read <= memv_write );
+    
+                    var d01 = {self.get_load_vector(f'memv_read', aligned=False)}; 
+                    
+                    unpack_vectorized(baseVec, d01, out var u01, out var u02);
+                    {self.get_store_vec("memv_write + NFrom * 0", "u01")};
+                    {self.get_store_vec("memv_write + NFrom * 1", "u02")};
+                                        
+                    memv_read -= NTo;
+                    memv_write -= 2 * NFrom;
+                    lenv -= 1;
+                }}
+            }}
+            
+            mem_read = memv_read + NTo;
+            mem_write = memv_write + 2 * NFrom;
+            
+            while (len-- > 0) 
+            {{
+                *(--mem_write) = {self.get_unshift_n_add(self.shift, '*(--mem_read)', "offset")};
+            }}                   
+        }}        
+        """
+        print(s, file=f)
 
     def generate_sort(self, f):
         t = self.type
@@ -1262,6 +1586,8 @@ namespace VxSort
                 vectorized_partition_{self.max_inner_unroll}(left, right, hint) :
                 vectorized_partition_{self.safe_inner_unroll}(left, right, hint);
 """
+
+
 
 
 
