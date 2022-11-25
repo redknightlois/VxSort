@@ -16,9 +16,19 @@ class AVX2SortingISA(SortingISA):
         self.shift = 0
 
         self.bitonic_size_map = {}
+        self._generated_load_partition = []
 
         for t, s in native_size_map.items():
             self.bitonic_size_map[t] = int(self.vector_size_in_bytes / s)
+
+        self.unsigned_type_map = {
+            "int": "uint",
+            "uint": "uint",
+            "float": "uint",
+            "long": "ulong",
+            "ulong": "ulong",
+            "double": "ulong",
+        }
 
         self.sorting_type_map = {
             "int": "Int32",
@@ -27,6 +37,15 @@ class AVX2SortingISA(SortingISA):
             "long": "Int64",
             "ulong": "UInt64",
             "double": "Int64",
+        }
+
+        self.capital_type_map = {
+            "int": "Int32",
+            "uint": "UInt32",
+            "float": "Float",
+            "long": "Int64",
+            "ulong": "UInt64",
+            "double": "Double",
         }
 
         self.pack_type_map = {
@@ -127,6 +146,8 @@ namespace VxSort
     internal unsafe partial struct Avx2VectorizedSort
     {{"""
         print(s, file=f)
+
+        self.generate_configuration_struct(f)
         self.generate_scalar_alignments(f)
         self.generate_vectorized_alignments(f)
 
@@ -150,9 +171,6 @@ namespace VxSort
 
     def get_small_sort_threshold_elements(self, n='V.Count'):
         return f"""{self.max_bitonic_sort_vectors} * {n}"""
-
-    def get_max_partition_tmp_size_in_elements(self):
-        return f"""2 * ({self.unroll} * {self.vector_size_in_bytes}) + {self.vector_size_in_bytes} + 4 * {self.vector_size_in_bytes}"""
 
     def get_partition_tmp_size_in_elements(self, n='V.Count'):
         return f"""2 * ({self.unroll} * {n}) + {n} + 4 * {n}"""
@@ -373,6 +391,33 @@ namespace VxSort
 
         print(s, file=f)
 
+    def generate_configuration_struct(self, f):
+        t = self.type
+        s = f"""
+        internal struct {self.capital_type_map[t]}Config
+        {{
+            public const int N = {self.vector_size()};
+            
+            public const int Unroll = { self.unroll };
+            public const int SlackPerSideInVectors = Unroll;
+            public const int SlackPerSideInElements = SlackPerSideInVectors * N;
+            public const int SmallSortThresholdElements = {self.get_small_sort_threshold_elements('N')};
+            
+            // The formula for figuring out how much temporary space we need for partitioning:
+            // 2 x the number of slack elements on each side for the purpose of partitioning in unrolled manner +
+            // 2 x amount of maximal bytes needed for alignment (32)
+            // one more vector's worth of elements since we write with N-way stores from both ends of the temporary area
+            // and we must make sure we do not accidentally over-write from left -> right or vice-versa right on that edge...
+            // In other words, while we allocated this much temp memory, the actual amount of elements inside said memory
+            // is smaller by 8 elements + 1 for each alignment (max alignment is actually N-1, I just round up to N...)
+            // This long sense just means that we over-allocate N+2 elements...
+            public const int PartitionTempSizeInElements = (2 * SlackPerSideInElements + N + 4 * N);   
+            public const int PartitionTempSizeInBytes = PartitionTempSizeInElements * sizeof({self.type});
+            public const int ElementAlign = sizeof({t}) - 1;    
+        }}
+        """
+
+        print(s, file=f)
 
     def generate_scalar_alignments(self, f):
         g = self
@@ -381,6 +426,10 @@ namespace VxSort
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static {t}* align_left_scalar_uncommon({t}* read_left, {t} pivot, ref {t}* tmp_left, ref {t}* tmp_right)
         {{
+            /// Called when the left hand side of the entire array does not have enough elements
+            /// for us to align the memory with vectorized operations, so we do this uncommon slower alternative.
+            /// Generally speaking this is probably called for all the partitioning calls on the left edge of the array
+            
             if (((ulong)read_left & Sort.ALIGN_MASK) == 0)
                 return read_left;
 
@@ -403,7 +452,11 @@ namespace VxSort
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static {t}* align_right_scalar_uncommon({t}* readRight, {t} pivot, ref {t}* tmpLeft, ref {t}* tmpRight)
-        {{
+        {{        
+            /// Called when the right hand side of the entire array does not have enough elements
+            /// for us to align the memory with vectorized operations, so we do this uncommon slower alternative.
+            /// Generally speaking this is probably called for all the partitioning calls on the right edge of the array
+            
             if (((ulong)readRight & Sort.ALIGN_MASK) == 0)
                 return readRight;
 
@@ -428,8 +481,11 @@ namespace VxSort
 
     def generate_load_and_partition_vectors(self, f, i):
 
-        if i is None:
+        if i is None or i in self._generated_load_partition:
             return ""
+
+        # Signal we wont generate it again.
+        self._generated_load_partition.append(i)
 
         def get_unrolled_load(i):
             s = ""
@@ -487,37 +543,37 @@ namespace VxSort
         def generate_unroll2(i):
             if i > 1:
                 s = F"""
-            int unrollHalf = {i};
-            readRightV += N * unrollHalf;
+            int unrollHalf = {self.get_configuration_constant('Unroll')} / 2;
+            readRightV += {self.get_configuration_constant("N")} * unrollHalf;
             while (readLeftV < readRightV)
             {{
-                if ((byte*)writeRight - (byte*)readRightV < (2 * (unrollHalf * N) - N) * sizeof({t}))
+                if ((byte*)writeRight - (byte*)readRightV < (2 * (unrollHalf * {self.get_configuration_constant("N")}) - {self.get_configuration_constant("N")}) * sizeof({t}))
                 {{
                     { self.generate_if_prefetch(F"Sse.Prefetch0(readRightV);") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 2 * N * {i});") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 3 * N * {i});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 2 * {self.get_configuration_constant('N')} * {i});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 3 * {self.get_configuration_constant('N')} * {i});") }
 
                     nextPtr = readRightV;
-                    readRightV -= N * unrollHalf;
+                    readRightV -= {self.get_configuration_constant("N")} * unrollHalf;
                 }}
                 else
                 {{
                     { self.generate_if_prefetch(F"Sse.Prefetch0(readLeftV);") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 2 * N * {i});") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 3 * N * {i});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 2 * {self.get_configuration_constant('N')} * {i});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 3 * {self.get_configuration_constant('N')} * {i});") }
 
                     // PERF: Ensure that JIT never emits cmov here.
                     nextPtr = readLeftV;
-                    readLeftV += N * unrollHalf;
+                    readLeftV += {self.get_configuration_constant("N")} * unrollHalf;
                 }}
 
                 LoadAndPartition{i}Vectors(nextPtr, P, pBase, ref writeLeft, ref writeRight);
             }}
 
-            readRightV += N * (unrollHalf - 1);"""
+            readRightV += {self.get_configuration_constant("N")} * (unrollHalf - 1);"""
             else:
                 s = F"""
-            readRightV += N * (unroll - 1);"""
+            readRightV += {self.get_configuration_constant("N")} * (unroll - 1);"""
             return s
 
         t = self.type
@@ -531,16 +587,9 @@ namespace VxSort
             s = f"""
         {method_name}
         {{
-            // PERF: All these are treated as constants at JIT time. 
-            int N = V.Count;
-            int SMALL_SORT_THRESHOLD_ELEMENTS = {self.get_small_sort_threshold_elements('N')};
-            int ELEMENT_ALIGN = sizeof({t}) - 1;
-            int PARTITION_TMP_SIZE_IN_ELEMENTS = {self.get_partition_tmp_size_in_elements('N')};
-            int unroll = {i};
-
-            Debug.Assert(right - left >= SMALL_SORT_THRESHOLD_ELEMENTS);
-            Debug.Assert(((long)left & ELEMENT_ALIGN) == 0);
-            Debug.Assert(((long)right & ELEMENT_ALIGN) == 0);
+            Debug.Assert(right - left >= {self.get_configuration_constant("SmallSortThresholdElements")});
+            Debug.Assert(((long)left & {self.get_configuration_constant("ElementAlign")}) == 0);
+            Debug.Assert(((long)right & {self.get_configuration_constant("ElementAlign")}) == 0);
 
             // Vectorized double-pumped (dual-sided) partitioning:
             // We start with picking a pivot using the media-of-3 "method"
@@ -581,7 +630,7 @@ namespace VxSort
 
             // We do this here just in case we need to pre-align to the right
             // We end up
-            *right = int.MaxValue;
+            *right = {t}.MaxValue;
 
             // Broadcast the selected pivot
             var P = {self.get_broadcast('pivot')};
@@ -589,14 +638,14 @@ namespace VxSort
             var readLeft = left;
             var readRight = right;
 
-            {self.generate_if_debug(F'''Span<{t}> tempSpan = new Span<{t}>(({t}*)_tempPtr, PARTITION_TMP_SIZE_IN_ELEMENTS);''')}
+            {self.generate_if_debug(F'''Span<{t}> tempSpan = new Span<{t}>(({t}*)_tempPtr, {self.get_configuration_constant("PartitionTempSizeInElements")});''')}
 
             var tmpStartLeft = ({t}*)_tempPtr;
             var tmpLeft = tmpStartLeft;
-            var tmpStartRight = tmpStartLeft + PARTITION_TMP_SIZE_IN_ELEMENTS;
+            var tmpStartRight = tmpStartLeft + {self.get_configuration_constant("PartitionTempSizeInElements")};
             var tmpRight = tmpStartRight;
 
-            tmpRight -= N;
+            tmpRight -= {self.get_configuration_constant("N")};
 
             {self.generate_if_debug(f'''Console.WriteLine($"Values:[{{string.Join(',', new Span<{t}>(left, (int)(right - left)).ToArray())}}]");''')}
 
@@ -618,23 +667,23 @@ namespace VxSort
 
             if (leftAlign > 0)
             {{
-                tmpRight += N;
+                tmpRight += {self.get_configuration_constant("N")};
                 readLeft = align_left_scalar_uncommon(readLeft, pivot, ref tmpLeft, ref tmpRight);
-                tmpRight -= N;
+                tmpRight -= {self.get_configuration_constant("N")};
             }}
 
             if (rightAlign < 0)
             {{
-                tmpRight += N;
+                tmpRight += {self.get_configuration_constant("N")};
                 readRight = align_right_scalar_uncommon(readRight, pivot, ref tmpLeft, ref tmpRight);
-                tmpRight -= N;
+                tmpRight -= {self.get_configuration_constant("N")};
             }}
 
             Debug.Assert(((ulong)readLeft & Sort.ALIGN_MASK) == 0);
             Debug.Assert(((ulong)readRight & Sort.ALIGN_MASK) == 0);
 
             Debug.Assert((((ulong)readRight - (ulong)readLeft) % Sort.ALIGN) == 0);
-            Debug.Assert((readRight - readLeft) >= unroll * 2);
+            Debug.Assert((readRight - readLeft) >= {self.get_configuration_constant("Unroll")} * 2);
 
             // From now on, we are fully aligned
             // and all reading is done in full vector units
@@ -645,7 +694,7 @@ namespace VxSort
             // PERF: This diminished the size of the method and improves the performance. 
             var pointers = stackalloc {t}*[2];
             pointers[0] = readLeftV;
-            pointers[1] = readRightV - unroll * N;
+            pointers[1] = readRightV - {self.get_configuration_constant("Unroll")} * {self.get_configuration_constant("N")};
             
             { self.generate_if_prefetch("Sse.Prefetch0(pointers[0]);") }
             { self.generate_if_prefetch("Sse.Prefetch0(pointers[1]);") }
@@ -653,40 +702,40 @@ namespace VxSort
             for ( int i = 0; i < 2; i++)
                 LoadAndPartition{i}Vectors(pointers[i], P, pBase, ref tmpLeft, ref tmpRight);
 
-            tmpRight += N;
+            tmpRight += {self.get_configuration_constant("N")};
 
             {self.generate_if_debug(f'''Console.WriteLine($"TempL:[{{string.Join(',', new Span<{t}>(tmpStartLeft, (int)(tmpLeft - tmpStartLeft)).ToArray())}}]");''')}
             {self.generate_if_debug(f'''Console.WriteLine($"TempR:[{{string.Join(',', new Span<{t}>(tmpRight, (int)(tmpStartRight - tmpRight)).ToArray())}}]");''')}
 
             // Adjust for the reading that was made above
-            readLeftV += N * unroll;
-            readRightV -= N * unroll * 2;
+            readLeftV += {self.get_configuration_constant("N")} * {self.get_configuration_constant("Unroll")};
+            readRightV -= {self.get_configuration_constant("N")} * {self.get_configuration_constant("Unroll")} * 2;
 
             {t}* nextPtr;
 
             var writeLeft = left;
-            var writeRight = right - N;
+            var writeRight = right - {self.get_configuration_constant("N")};
 
             while (readLeftV < readRightV)
             {{
-                if ((byte*)writeRight - (byte*)readRightV < (2 * (unroll * N) - N) * sizeof({t}))
+                if ((byte*)writeRight - (byte*)readRightV < (2 * ({self.get_configuration_constant("Unroll")} * {self.get_configuration_constant("N")}) - {self.get_configuration_constant("N")}) * sizeof({t}))
                 {{
                     { self.generate_if_prefetch(F"Sse.Prefetch0(readRightV);") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 2 * N * {self.unroll});") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 3 * N * {self.unroll});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 2 * {self.get_configuration_constant('N')} * {self.unroll});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readRightV - 3 * {self.get_configuration_constant('N')} * {self.unroll});") }
                     
                     nextPtr = readRightV;
-                    readRightV -= N * unroll;
+                    readRightV -= {self.get_configuration_constant("N")} * {self.get_configuration_constant("Unroll")};
                 }}
                 else
                 {{
                     { self.generate_if_prefetch(F"Sse.Prefetch0(readLeftV);") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 2 * N * {self.unroll});") }
-                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 3 * N * {self.unroll});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 2 * {self.get_configuration_constant('N')} * {self.unroll});") }
+                    { self.generate_if_prefetch(F"Sse.Prefetch1(readLeftV + 3 * {self.get_configuration_constant('N')} * {self.unroll});") }
                     
                     // PERF: Ensure that JIT never emits cmov here.
                     nextPtr = readLeftV;
-                    readLeftV += N * unroll;
+                    readLeftV += {self.get_configuration_constant("N")} * {self.get_configuration_constant("Unroll")};
                 }}
 
                 LoadAndPartition{i}Vectors(nextPtr, P, pBase, ref writeLeft, ref writeRight);
@@ -699,16 +748,16 @@ namespace VxSort
 
             while (readLeftV <= readRightV)
             {{
-                if ((byte*)writeRight - (byte*)readRightV < N * sizeof({t}))
+                if ((byte*)writeRight - (byte*)readRightV < {self.get_configuration_constant("N")} * sizeof({t}))
                 {{
                     nextPtr = readRightV;
-                    readRightV -= N;                                
+                    readRightV -= {self.get_configuration_constant("N")};                                
                 }}
                 else
                 {{                   
                     // PERF: Ensure that JIT never emits cmov here.
                     nextPtr = readLeftV;
-                    readLeftV += N;                    
+                    readLeftV += {self.get_configuration_constant("N")};                    
                 }}
 
                 LoadAndPartition{1}Vectors(nextPtr, P, pBase, ref writeLeft, ref writeRight);
@@ -718,13 +767,15 @@ namespace VxSort
             {self.generate_if_debug(f'''Console.WriteLine($"WR:[{{string.Join(',', new Span<{t}>(writeRight, (int)(right - writeRight)).ToArray())}}]");''')}
 
             // 3. Copy-back the 4 registers + remainder we partitioned in the beginning
+          
             var leftTmpSize = tmpLeft - tmpStartLeft;
             Unsafe.CopyBlockUnaligned(writeLeft, tmpStartLeft, (uint)(leftTmpSize * sizeof({t})));
             writeLeft += leftTmpSize;
+
             {self.generate_if_debug(f'''Console.WriteLine($"WL:[{{string.Join(',', new Span<{t}>(left, (int)(writeLeft - left)).ToArray())}}]");''')}
             var rightTmpSize = tmpStartRight - tmpRight;
             Unsafe.CopyBlockUnaligned(writeLeft, tmpRight, (uint)(rightTmpSize * sizeof({t})));            
-
+           
             {self.generate_if_debug(f'''Console.WriteLine($"W:[{{string.Join(',', new Span<{t}>(left, (int)(right - left)).ToArray())}}]");''')}
             // Shove to pivot back to the boundary
             *right = *writeLeft;
@@ -746,7 +797,6 @@ namespace VxSort
     def generate_sort_primitives(self, f):
         t = self.type
         s = f"""
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Swap({t}* left, {t}* right)
         {{
             var tmp = *left;
@@ -754,49 +804,17 @@ namespace VxSort
             *right = tmp;
         }}    
         
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void SwapIfGreater({t}* leftPtr, {t}* rightPtr)            
         {{
-            var left = *leftPtr;
-            var right = *rightPtr;
-            if (left <= right)
-                return;
-            
-            *leftPtr = right;
-            *rightPtr = left;
+            if (*leftPtr <= *rightPtr) return;
+            Swap(leftPtr, rightPtr);
         }}
         
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void SwapIfGreater3(in {t}* leftPtr, in {t}* middlePtr, in {t}* rightPtr)
         {{
-            var low = *leftPtr;
-            var high = *rightPtr;
-            var middle = *middlePtr;
-            
-            if (middle < low)
-            {{
-                var tmp = middle;
-                middle = low;
-                low = tmp;
-            }}
-
-            if (high < low)
-            {{
-                var tmp = high;
-                high = low;
-                low = tmp;
-            }}
-            
-            if (high < middle)
-            {{
-                var tmp = high;
-                high = middle;
-                middle = tmp;
-            }}
-
-            *leftPtr = low;
-            *middlePtr = middle;
-            *rightPtr = high;
+            SwapIfGreater(leftPtr, middlePtr);
+            SwapIfGreater(leftPtr, rightPtr);
+            SwapIfGreater(middlePtr, rightPtr);
         }}
               
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -846,7 +864,7 @@ namespace VxSort
         tt = self.pack_type_map[self.type]
 
         return F"""    
-            if (right_hint - left_hint < uint.MaxValue << {self.shift})
+            if (({self.unsigned_type_map[t]}) (right_hint - left_hint) < {self.unsigned_type_map[tt]}.MaxValue << {self.shift})
             {{
                 {self.generate_if_debug(F'''Console.WriteLine($"Pre:Unpacked[{{string.Join(',', new Span<{t}>(({t}*)left, length).ToArray())}}]");''')}
                 Pack(left, length, left_hint);
@@ -854,7 +872,7 @@ namespace VxSort
                 
                 {tt}* il = ({tt}*) left;
                 {tt}* ir = il + (length - 1);
-                var sorter = new Avx2VectorizedSort(il, ir);
+                var sorter = new Avx2VectorizedSort(il, ir, _tempPtr, _tempLength);
                 sorter.sort(il, ir, 0, 0, Sort.REALIGN_BOTH, depth_limit);
                 
                 {self.generate_if_debug(F'''Console.WriteLine($"Post:Packed[{{string.Join(',', new Span<{tt}>(({tt}*)left, length).ToArray())}}]");''')}
@@ -1148,11 +1166,6 @@ namespace VxSort
         s = f"""
         internal void sort({t}* left, {t}* right, {t} left_hint, {t} right_hint, long hint, int depth_limit)
         {{
-            // PERF: All these are treated as constants at JIT time. 
-            int N = V.Count;
-            int SMALL_SORT_THRESHOLD_ELEMENTS = {self.get_small_sort_threshold_elements('N')};
-            int PARTITION_TMP_SIZE_IN_ELEMENTS = {self.get_partition_tmp_size_in_elements('N')};
-
             var length = (int)(right - left + 1);
 
             {t}* mid;
@@ -1173,7 +1186,7 @@ namespace VxSort
             }}
 
             // Go to insertion sort below this threshold
-            if (length <= SMALL_SORT_THRESHOLD_ELEMENTS)
+            if (length <= {self.get_configuration_constant("SmallSortThresholdElements")})
             {{
                 {self.generate_if_debug(F'''var idx = left - ({t}*)_startPtr;''')}
                 {self.generate_if_debug('''Console.WriteLine($"B({depth_limit}):[{idx}|{idx + length}]");''')}
@@ -1215,7 +1228,7 @@ namespace VxSort
 
             var preAlignedLeft = ({t}*)((ulong)left & ~Sort.ALIGN_MASK);
             var cannotPreAlignLeft = ((long)preAlignedLeft - (long)_startPtr) >> 63;
-            var preAlignLeftOffset = (preAlignedLeft - left) + (N & cannotPreAlignLeft);
+            var preAlignLeftOffset = (preAlignedLeft - left) + ({self.get_configuration_constant("N")} & cannotPreAlignLeft);
             if ((hint & Sort.REALIGN_LEFT) != 0)
             {{
                 // Alignment flow:
@@ -1229,7 +1242,7 @@ namespace VxSort
 
             var preAlignedRight = ({t}*)(((ulong)right - 1 & ~Sort.ALIGN_MASK) + Sort.ALIGN);
             var cannotPreAlignRight = ((long)_endPtr - (long)preAlignedRight) >> 63;
-            var preAlignRightOffset = (preAlignedRight - right - (N & cannotPreAlignRight));
+            var preAlignRightOffset = (preAlignedRight - right - ({self.get_configuration_constant("N")} & cannotPreAlignRight));
             if ((hint & Sort.REALIGN_RIGHT) != 0)
             {{
                 // right is pointing just PAST the last element we intend to partition (where we also store the pivot)
@@ -1275,22 +1288,27 @@ namespace VxSort
         { self.generate_if_debug('private int _depth;') }
         private void* _startPtr;
         private void* _endPtr;    
-        private readonly void* _tempPtr;
-#pragma warning disable 649
-        fixed int _temp[{self.get_max_partition_tmp_size_in_elements()}];
-#pragma warning restore 649
-        
+        private readonly byte* _tempPtr;
+        private readonly int _tempLength;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        public Avx2VectorizedSort(void* start, void* end)
+        public Avx2VectorizedSort(void* start, void* end, byte* buffer, int bufferSize)
         {{
-            {self.generate_if_debug('_depth = 0;')}
-            _startPtr = start;
-            _endPtr = end;
-            fixed (int* pTemp = _temp)
-            {{
-                _tempPtr = pTemp;
-            }}
+            _startPtr   = start;
+            _endPtr     = end;
+            _tempPtr    = buffer;
+            _tempLength = bufferSize;
+            { self.generate_if_debug('_depth = 0;') }
         }} 
+        
+        // We might read the last 8 bytes into a 128-bit vector for the purpose of permutation
+        // Most compilers actually fuse the pair of instructions: _mm256_cvtepi8_epiNN + _mm_loadu_si128
+        // into a single instruction that will not read more that 4/8 bytes..
+        // vpmovsxb[dq] ymm0, dword [...], eliminating the 128-bit load completely and effectively
+        // reading exactly 4/8 (depending if the instruction is vpmovsxbd or vpmovsxbq)
+        // without generating an out of bounds read at all.
+        // But, life is harsh, and we can't trust the compiler to do the right thing if it is not
+        // contractual
         
         internal static ReadOnlySpan<byte> perm_table_64 => new byte[]
         {{
@@ -1310,6 +1328,7 @@ namespace VxSort
             2, 3, 0, 1, 4, 5, 6, 7,  // 0b1101 (13)
             0, 1, 2, 3, 4, 5, 6, 7,  // 0b1110 (14)
             0, 1, 2, 3, 4, 5, 6, 7,  // 0b1111 (15)
+            0, 0, 0, 0, 0, 0, 0, 0,  // Ensuring we cannot overrun the buffer.
         }};
 
         internal static ReadOnlySpan<byte> perm_table_32 => new byte[]
@@ -1570,6 +1589,7 @@ namespace VxSort
             1, 0, 2, 3, 4, 5, 6, 7, // 0b11111101 (253)
             0, 1, 2, 3, 4, 5, 6, 7, // 0b11111110 (254)
             0, 1, 2, 3, 4, 5, 6, 7, // 0b11111111 (255)
+            0, 0, 0, 0, 0, 0, 0, 0, // Ensuring we cannot overrun the buffer.
         }};                
     }}"""
         print(s, file=f)
@@ -1582,10 +1602,13 @@ namespace VxSort
 """
         else:
             return F"""                
-            var sep = length < PARTITION_TMP_SIZE_IN_ELEMENTS ?
+            var sep = length < {self.get_configuration_constant("PartitionTempSizeInElements")} ?
                 vectorized_partition_{self.max_inner_unroll}(left, right, hint) :
                 vectorized_partition_{self.safe_inner_unroll}(left, right, hint);
 """
+
+    def get_configuration_constant(self, param):
+        return F"{self.capital_type_map[self.type]}Config.{param}"
 
 
 

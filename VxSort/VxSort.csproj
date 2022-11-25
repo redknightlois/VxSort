@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <Title>VxSort</Title>
         <Authors>damageboy</Authors>
@@ -21,10 +21,16 @@
         <PackageLicenseUrl>https://raw.githubusercontent.com/damageboy/VxSort/master/LICENSE</PackageLicenseUrl>
         <PackageIconUrl>..\vxsort.png</PackageIconUrl>
     </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <WarningLevel>7</WarningLevel>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+      <WarningLevel>7</WarningLevel>
+    </PropertyGroup>
     <ItemGroup>
-      <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" />
-      <PackageReference Include="Microsoft.CodeQuality.Analyzers" />
-      <PackageReference Include="Microsoft.SourceLink.GitHub" />
+      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" />
     </ItemGroup>
     <ItemGroup>
       <None Remove="vxsort.svg" />

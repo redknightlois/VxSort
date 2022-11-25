@@ -65,6 +65,12 @@ def generate_per_type(f_header, type, vector_isa, break_inline, configuration):
     g.generate_master_entry_point(f_header)
     g.generate_epilogue(f_header)
 
+def generate_main_type(f_header, type, vector_isa, break_inline, configuration):
+    g = get_generator(vector_isa, type, configuration)
+    g.generate_prologue(f_header)
+    g.generate_main(f_header)
+    g.generate_epilogue(f_header)
+
 class VectorISA(Enum):
     AVX2 = 'AVX2'
     # AVX512 = 'AVX512'
@@ -101,6 +107,13 @@ def generate_all_types():
             h_filename = os.path.join(opts.output_dir, filename + ".cs")
             with open(h_filename, "w") as f_header:
                 generate_per_type(f_header, t, isa, opts.break_inline, config)
+
+        filename = f"BitonicSort.{isa}.generated"
+        print(f"Generating {filename}.{{cs}}")
+        h_filename = os.path.join(opts.output_dir, filename + ".cs")
+        with open(h_filename, "w") as f_header:
+            generate_main_type(f_header, t, isa, opts.break_inline, config)
+
 
 if __name__ == '__main__':
     generate_all_types()

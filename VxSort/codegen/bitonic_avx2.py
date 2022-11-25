@@ -487,28 +487,75 @@ namespace VxSort
     def generate_master_entry_point(self, f_header):
 
         def generate_sorters_entry_list():
-            s = ""
+            s = "\n"
             for m in range(1, self.max_bitonic_sort_vectors + 1):
-                s += f"&sort_{m:02d}v_alt, "
-                if m % 3 == 0:
-                    s += '\n        '
+                s += f"\t\t\t\tcase {m}: sort_{m:02d}v_alt(ptr, remainder); return; \n"
             return s
 
         t = self.type
-        s = f"""
-        
-        private readonly static delegate*<{t}*, int, void>[] {t}Functions = new delegate*<{t}*, int, void>[]
-        {{
-            null,
-            {generate_sorters_entry_list()}
-        }};
-                                            
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        s = f"""                
+                                               
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         public static void Sort({t}* ptr, int length)
-        {{
+        {{                    
             uint fullvlength = (uint)length / (uint)V.Count;
-            var remainder = (int) (length - fullvlength * V.Count);
+            var remainder = (int)(length - fullvlength * V.Count);
             var v = fullvlength + ((remainder > 0) ? 1 : 0);
-            {t}Functions[v](ptr, remainder);
+            switch (v)
+            {{
+                {generate_sorters_entry_list()}              
+            }}
         }}"""
+        print(s, file=f_header)
+
+
+    def generate_main(self, f_header):
+        def generate_bitonic_length_by_type():
+            s = ""
+            for key, type in self.bitonic_type_map.items():
+                s += f"""
+            if (typeof(T) == typeof({key}))
+                return {self.bitonic_size_map[key]} * {self.max_bitonic_sort_vectors};"""
+            return s
+
+        t = self.type
+        s = f"""                
+        // * We might read the last 4 bytes into a 128-bit vector for 64-bit element masking
+        // * We might read the last 8 bytes into a 128-bit vector for 32-bit element masking
+        // This mostly applies to debug mode, since without optimizations, most compilers
+        // actually execute the instruction stream _mm256_cvtepi8_epiNN + _mm_loadu_si128 as they are given.
+        // In contract, release/optimizing compilers, turn that very specific instruction pair to
+        // a more reasonable: vpmovsxbq ymm0, dword [rax*4 + mask_table_4], eliminating the 128-bit
+        // load completely and effectively reading 4/8 (depending if the instruction is vpmovsxb[q,d]
+
+        public static ReadOnlySpan<byte> mask_table_4 => new byte[]{{
+            0xFF, 0xFF, 0xFF, 0xFF, // 0b0000 (0)
+            0xFF, 0x00, 0x00, 0x00, // 0b0001 (1)
+            0xFF, 0xFF, 0x00, 0x00, // 0b0011 (3)
+            0xFF, 0xFF, 0xFF, 0x00, // 0b0111 (7)
+            0xCC, 0xCC, 0xCC, 0xCC, // Ensuring we cannot overrun the buffer.
+            0xCC, 0xCC, 0xCC, 0xCC, // Ensuring we cannot overrun the buffer.
+            0xCC, 0xCC, 0xCC, 0xCC, // Ensuring we cannot overrun the buffer.
+        }};
+
+        public static ReadOnlySpan<byte> mask_table_8 => new byte[]{{
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 0b00000000 (  0)
+            0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0b00000001 (  1)
+            0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0b00000011 (  3)
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, // 0b00000111 (  7)
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, // 0b00001111 ( 15)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, // 0b00011111 ( 31)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, // 0b00111111 ( 63)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, // 0b01111111 (127)
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, // Ensuring we cannot overrun the buffer.
+        }};
+        
+        public static int MaxBitonicLength<T>() where T : unmanaged
+        {{
+            { generate_bitonic_length_by_type() }
+            
+            throw new NotSupportedException($"The type {{typeof(T).Name}} is not supported");
+        }} 
+                
+        """
         print(s, file=f_header)

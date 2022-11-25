@@ -68,7 +68,7 @@ namespace VxSort.Reference
         static void Swap<TX>(Span<TX> span, int left, int right)
         {
             var tmp = span[left];
-            span[left] = span[right];
+            span[left]  = span[right];
             span[right] = tmp;
         }
 
@@ -139,7 +139,7 @@ namespace VxSort.Reference
         }
 
         // How much initial room needs to be made
-        // during setup in full Vector25 units
+        // during setup in full Vector256 units
         const int SLACK_PER_SIDE_IN_VECTORS = 8;
 
         // Once we come out of the first unrolled loop

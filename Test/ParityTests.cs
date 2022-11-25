@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using NUnit.Framework;
+using VxSort;
 using VxSort.Reference;
 using static Test.DataGeneration;
 using DataGenerator = System.Func<(int[] data, int[] sortedData, string reproContext)>;
@@ -88,7 +89,7 @@ namespace Test
         public void VxSortPrimitiveUnstable(DataGenerator generator)
         {
             var (randomData, sortedData, reproContext) = generator();
-            VectorizedSort.UnstableSort(randomData);
+            Sort.Run(randomData);
 
             Assert.That(randomData, Is.Ordered,             reproContext);
             Assert.That(randomData, Is.EqualTo(sortedData), reproContext);

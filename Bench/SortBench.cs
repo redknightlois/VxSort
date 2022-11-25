@@ -101,6 +101,9 @@ namespace Bench
         public void Reference() => Array.Sort(_arrays[_iterationIndex++]);
 
         [Benchmark]
+        public void MemoryExtensions() => System.MemoryExtensions.Sort(_arrays[_iterationIndex++].AsSpan());
+
+        [Benchmark]
         public void VxSort() => Sort.Run(_arrays[_iterationIndex++]);
     }
 }

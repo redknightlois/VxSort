@@ -8,6 +8,6 @@ class Configuration:
         self.pack_unroll = 4
         self.do_prefetch = False
         self.is_debug = False
-        self.can_pack = True
+        self.can_pack = False
 
 

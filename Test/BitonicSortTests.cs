@@ -56,6 +56,10 @@ namespace Test
         {
             var (randomData, sortedData, reproContext) = generator();
 
+            int maxIntBitonicSize = BitonicSort.MaxBitonicLength<int>();
+            if (randomData.Length > maxIntBitonicSize)
+                return;
+
             fixed (int* p = &randomData[0])
             {
                 BitonicSort.Sort(p, randomData.Length);
@@ -75,7 +79,7 @@ namespace Test
         {
             var (randomIntData, sortedIntData, reproContext) = generator();
 
-            int maxLongBitonicSize = 64;
+            int maxLongBitonicSize = BitonicSort.MaxBitonicLength<long>();
             if (randomIntData.Length > maxLongBitonicSize)
                 return;
 
@@ -105,7 +109,7 @@ namespace Test
         {
             var (randomIntData, sortedIntData, reproContext) = generator();
 
-            int maxLongBitonicSize = 64;
+            int maxLongBitonicSize = BitonicSort.MaxBitonicLength<ulong>();
             if (randomIntData.Length > maxLongBitonicSize)
                 return;
 
@@ -135,6 +139,10 @@ namespace Test
         {
             var (randomIntData, sortedIntData, reproContext) = generator();
 
+            int maxIntBitonicSize = BitonicSort.MaxBitonicLength<int>();
+            if (randomIntData.Length > maxIntBitonicSize)
+                return;
+
             uint[] randomData = new uint[randomIntData.Length];
             uint[] sortedData = new uint[sortedIntData.Length];
             for (int i = 0; i < randomIntData.Length; i++)
@@ -160,6 +168,11 @@ namespace Test
         public unsafe void BitonicSortFloatTest(DataGenerator generator)
         {
             var (randomIntData, sortedIntData, reproContext) = generator();
+
+            int maxFloatBitonicSize = BitonicSort.MaxBitonicLength<float>();
+            if (randomIntData.Length > maxFloatBitonicSize)
+                return;
+
 
             float[] randomData = new float[randomIntData.Length];
             float[] sortedData = new float[sortedIntData.Length];
@@ -187,8 +200,8 @@ namespace Test
         {
             var (randomIntData, sortedIntData, reproContext) = generator();
 
-            int maxLongBitonicSize = 64;
-            if (randomIntData.Length > maxLongBitonicSize)
+            int maxDoubleBitonicSize = BitonicSort.MaxBitonicLength<double>();
+            if (randomIntData.Length > maxDoubleBitonicSize)
                 return;
 
             double[] randomData = new double[randomIntData.Length];
