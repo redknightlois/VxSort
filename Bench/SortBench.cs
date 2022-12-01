@@ -21,7 +21,10 @@ namespace Bench
         {
             SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
             AddJob(Job.LongRun);
-            //AddColumn(new TimePerNColumn());
+            // Use Dynamic PGO mode:
+            //AddJob(Job.LongRun.WithId("Dynamic PGO")
+            //    .WithEnvironmentVariables(
+            //        new EnvironmentVariable("DOTNET_TieredPGO",           "1")));
         }
     }
 
@@ -31,7 +34,10 @@ namespace Bench
         {
             SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
             AddJob(Job.MediumRun);
-            //AddColumn(new TimePerNColumn());
+            // Use Dynamic PGO mode:
+            AddJob(Job.MediumRun.WithId("Dynamic PGO")
+                .WithEnvironmentVariables(
+                    new EnvironmentVariable("DOTNET_TieredPGO",           "1")));
         }
     }
 
@@ -41,6 +47,9 @@ namespace Bench
         {
             SummaryStyle = new SummaryStyle(CultureInfo.InvariantCulture, true, SizeUnit.GB, TimeUnit.Microsecond);
             AddJob(Job.ShortRun);
+            AddJob(Job.ShortRun.WithId("Dynamic PGO")
+                .WithEnvironmentVariables(
+                    new EnvironmentVariable("DOTNET_TieredPGO",           "1")));
             //AddColumn(new TimePerNColumn());
         }
     }
@@ -90,7 +99,7 @@ namespace Bench
 
     [GenericTypeArguments(typeof(long))] // value type
     [InvocationCount(InvocationsPerIterationValue)]
-    [Config(typeof(MediumConfig))]
+    [Config(typeof(LongConfig))]
     public class LongSortBench<T> : SortBenchBase<T> where T : unmanaged, IComparable<T>
     {
         const int InvocationsPerIterationValue = 3;

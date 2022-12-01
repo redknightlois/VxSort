@@ -45,32 +45,37 @@ class AVX2BitonicISA(BitonicISA):
         t = self.type
         if t == "double":
             return v
-        elif t == "float":
-            return f"s2d({v})"
-        return f"i2d({v})"
+        return f"Vector256.AsDouble({v})"
 
     def i2s(self, v):
         t = self.type
         if t == "double":
             raise Exception("Incorrect Type")
         elif t == "float":
-            return f"i2s({v})"
+            return f"Vector256.AsSingle({v})"
         return v
 
     def d2i(self, v):
         t = self.type
-        if t == "double":
-            return v
-        elif t == "float":
-            return f"d2s({v})"
-        return f"d2i<{t}>({v})"
+        if t == "float":
+            return f"Vector256.AsSingle({v})"
+        elif t == "int":
+            return f"Vector256.AsInt32({v})"
+        elif t == "uint":
+            return f"Vector256.AsUInt32({v})"
+        elif t == "long":
+            return f"Vector256.AsInt64({v})"
+        elif t == "ulong":
+            return f"Vector256.AsUInt64({v})"
+
+        return v
 
     def s2i(self, v):
         t = self.type
         if t == "double":
             raise Exception("Incorrect Type")
         elif t == "float":
-            return f"s2i<int>({v})"
+            return f"Vector256.AsInt32({v})"
         return v
 
     def generate_param_list(self, start, numParams):
@@ -147,7 +152,7 @@ class AVX2BitonicISA(BitonicISA):
         size = self.vector_size()
         if size == 8:
             v = f"Shuffle({self.s2i(v)}, 0x1B)"
-            return self.d2i(f"Permute4x64(i2d({v}), 0x4E)")
+            return self.d2i(f"Permute4x64({self.i2d(v)}, 0x4E)")
         elif size == 4:
             return self.d2i(f"Permute4x64({self.i2d(v)}, 0x1B)")
 
@@ -169,9 +174,9 @@ class AVX2BitonicISA(BitonicISA):
         elif t == "float":
             return f"Min({v1}, {v2})"
         elif t == "long":
-            return self.d2i(f"BlendVariable({self.i2d(v1)}, {self.i2d(v2)}, i2d(cmp))")
+            return self.d2i(f"BlendVariable({self.i2d(v1)}, {self.i2d(v2)}, {self.i2d('cmp')})")
         elif t == "ulong":
-            return self.d2i(f"BlendVariable({self.i2d(v1)}, {self.i2d(v2)}, i2d(cmp))")
+            return self.d2i(f"BlendVariable({self.i2d(v1)}, {self.i2d(v2)}, {self.i2d('cmp')})")
         elif t == "double":
             return f"Min({v1}, {v2})"
 
@@ -184,9 +189,9 @@ class AVX2BitonicISA(BitonicISA):
         elif t == "float":
             return f"Max({v1}, {v2})"
         elif t == "long":
-            return self.d2i(f"BlendVariable({self.i2d(v2)}, {self.i2d(v1)}, i2d(cmp))")
+            return self.d2i(f"BlendVariable({self.i2d(v2)}, {self.i2d(v1)}, {self.i2d('cmp')})")
         elif t == "ulong":
-            return self.d2i(f"BlendVariable({self.i2d(v2)}, {self.i2d(v1)}, i2d(cmp))")
+            return self.d2i(f"BlendVariable({self.i2d(v2)}, {self.i2d(v1)}, {self.i2d('cmp')})")
         elif t == "double":
             return f"Max({v1}, {v2})"
 
@@ -259,7 +264,6 @@ using static System.Runtime.Intrinsics.X86.Avx2;
 using static System.Runtime.Intrinsics.X86.Sse2;
 using static System.Runtime.Intrinsics.X86.Sse41;
 using static System.Runtime.Intrinsics.X86.Sse42;
-using static VxSort.VectorExtensions;
 
 namespace VxSort
 {{
@@ -449,9 +453,9 @@ namespace VxSort
         for m in range(1, g.max_bitonic_sort_vectors + 1):
             mask = f"""ConvertToVector256{self.bitonic_type_map[type]}(LoadVector128((sbyte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(mask_table_{self.vector_size()})) + remainder * V.Count))"""
             if type == "double":
-                mask = f"""i2d({mask})"""
+                mask = f"Vector256.AsDouble({mask})"
             elif type == "float":
-                mask = f"""i2s({mask})"""
+                mask = f"Vector256.AsSingle({mask})"
             elif type == 'uint':
                 mask = f"""{mask}.AsUInt32()"""
             elif type == 'ulong':
