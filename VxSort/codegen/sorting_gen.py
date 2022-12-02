@@ -63,7 +63,7 @@ def generate_base_types(f_header, vector_isa, configuration):
     g.generate_epilogue(f_header)
 
 
-def generate_all_types():
+def generate_sorting_all_types():
     parser = argparse.ArgumentParser()
     parser.add_argument("--vector-isa",
                         nargs='+',
@@ -95,4 +95,4 @@ def generate_all_types():
 
 
 if __name__ == '__main__':
-    generate_all_types()
+    generate_sorting_all_types()

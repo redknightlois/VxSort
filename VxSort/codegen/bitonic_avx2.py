@@ -27,7 +27,7 @@ class AVX2BitonicISA(BitonicISA):
 
         self._max_bitonic_sort_vectors = configuration.max_bitonic_sort_vectors
 
-        self._var_names = [f"d{i:02d}" for i in range(0, self.max_bitonic_sort_vectors + 1)]
+        self._var_names = [f"d{i:02d}" for i in range(0, self.max_bitonic_sort_vectors + 2)]
 
     @property
     def max_bitonic_sort_vectors(self):
@@ -282,9 +282,10 @@ namespace VxSort
     """
         print(s, file=f)
 
-    def generate_1v_sort(self, ascending, dv: str = "d01"):
+    def generate_1v_sort(self, ascending, start=1):
         g = self
         type = self.type
+        var = self._var_names
         maybe_cmp = lambda: ", cmp" if (type == "long" or type == "ulong") else ""
         maybe_topbit = lambda: f"{g.vector_type()} topBit = Vector256.Create(1UL << 63);" if type == "ulong" else ""
 
@@ -292,40 +293,40 @@ namespace VxSort
             {g.vector_type()}  min, max, s{maybe_cmp()};
             {maybe_topbit()}
 
-            s = {g.generate_shuffle_X1(dv)};
-            {g.crappity_crap_crap("s", dv)}
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B1("min", "max", ascending)};
+            s = {g.generate_shuffle_X1(var[start])};
+            {g.crappity_crap_crap("s", var[start])}
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B1("min", "max", ascending)};
 
-            s = {g.generate_shuffle_XR(dv)};
-            {g.crappity_crap_crap("s", dv)}
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B2("min", "max", ascending)};
+            s = {g.generate_shuffle_XR(var[start])};
+            {g.crappity_crap_crap("s", var[start])}
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B2("min", "max", ascending)};
 
-            s = {g.generate_shuffle_X1(dv)};
-            {g.crappity_crap_crap("s", dv)}
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B1("min", "max", ascending)};"""
+            s = {g.generate_shuffle_X1(var[start])};
+            {g.crappity_crap_crap("s", var[start])}
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B1("min", "max", ascending)};"""
 
         if g.vector_size() == 8:
             s += f"""
-            s = {g.generate_reverse(dv)};
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B4("min", "max", ascending)};
+            s = {g.generate_reverse(var[start])};
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B4("min", "max", ascending)};
 
-            s = {g.generate_shuffle_X2(dv)};
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B2("min", "max", ascending)};
+            s = {g.generate_shuffle_X2(var[start])};
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B2("min", "max", ascending)};
 
-            s = {g.generate_shuffle_X1(dv)};
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B1("min", "max", ascending)};"""
+            s = {g.generate_shuffle_X1(var[start])};
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B1("min", "max", ascending)};"""
 
         return s
 
@@ -336,14 +337,15 @@ namespace VxSort
         s = f"""
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static void sort_01v_{suffix}({g.generate_param_def_list(1)}) {{
-            {self.generate_1v_sort(ascending, "d01")}        
+            {self.generate_1v_sort(ascending, 1)}        
         }}"""
 
         print(s, file=f)
 
-    def generate_1v_merge(self, ascending, dv: str = "d01"):
+    def generate_1v_merge(self, ascending, start):
         g = self
         type = self.type
+        var = self._var_names
         maybe_cmp = lambda: ", cmp" if (type == "long" or type == "ulong") else ""
         maybe_topbit = lambda: f"{g.vector_type()} topBit = Vector256.Create(1UL << 63);" if type == "ulong" else ""
 
@@ -352,23 +354,23 @@ namespace VxSort
             {maybe_topbit()}"""
         if g.vector_size() == 8:
             s += f"""
-            s = {g.generate_cross(dv)};
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B4("min", "max", ascending)};"""
+            s = {g.generate_cross(var[start])};
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B4("min", "max", ascending)};"""
 
         s += f"""
-            s = {g.generate_shuffle_X2(dv)};
-            {g.crappity_crap_crap("s", dv)}
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B2("min", "max", ascending)};
+            s = {g.generate_shuffle_X2(var[start])};
+            {g.crappity_crap_crap("s", var[start])}
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B2("min", "max", ascending)};
 
-            s = {g.generate_shuffle_X1(dv)};
-            {g.crappity_crap_crap("s", dv)}
-            min = {g.generate_min("s", dv)};
-            max = {g.generate_max("s", dv)};
-            {dv} = {g.generate_blend_B1("min", "max", ascending)};"""
+            s = {g.generate_shuffle_X1(var[start])};
+            {g.crappity_crap_crap("s", var[start])}
+            min = {g.generate_min("s", var[start])};
+            max = {g.generate_max("s", var[start])};
+            {var[start]} = {g.generate_blend_B1("min", "max", ascending)};"""
 
         return s
 
@@ -379,13 +381,48 @@ namespace VxSort
         s = f"""
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public static void sort_01v_merge_{suffix}({g.generate_param_def_list(1)}) {{
-            {g.generate_1v_merge(ascending, "d01")}
+            {g.generate_1v_merge(ascending, 1)}
         }}
         """
 
         print(s, file=f)
 
-    def generate_xv_compounded_sort(self, width, ascending):
+    def generate_compounded_merge(self, width, ascending, start, numParams=1):
+        g = self
+        suffix = "ascending" if ascending else "descending"
+
+        if width == 1:
+            return f"""
+        {{        
+            //sort_{1:02d}v_merge_{suffix}({g.generate_param_list(1, start)});      
+            {g.generate_1v_merge(ascending, start)}
+        }}"""
+        else:
+            return f"""
+        {{    
+            //sort_{width:02d}v_merge_{suffix}({g.generate_param_list(start, numParams)});
+            sort_{width:02d}v_merge_{suffix}({g.generate_param_list(start, numParams)});
+        }}"""
+
+    def generate_compounded_sort(self, width, ascending, start, numParams=1):
+        g = self
+        suffix = "ascending" if ascending else "descending"
+
+        if width == 1:
+            return f"""
+        {{
+            //sort_{1:02d}v_{suffix}({g.generate_param_list(1, start)});      
+            {g.generate_1v_sort(ascending, start)}
+        }}"""
+        else:
+
+            return f"""
+        {{                
+            //sort_{width:02d}v_{suffix}({g.generate_param_list(start, numParams)});
+            sort_{width:02d}v_{suffix}({g.generate_param_list(start, numParams)});
+        }}"""
+
+    def generate_xv_compounded_sort(self, width, ascending, start):
         type = self.type
         g = self
         var = self._var_names
@@ -393,64 +430,65 @@ namespace VxSort
         maybe_cmp = lambda: ", cmp" if (type == "long" or type == "ulong") else ""
         maybe_topbit = lambda: f"\n        {g.vector_type()} topBit = Vector256.Create(1UL << 63);" if (type == "ulong") else ""
 
+        suffix = "ascending" if ascending else "descending"
+        rev_suffix = "descending" if ascending else "ascending"
         w1 = int(next_power_of_2(width) / 2)
         w2 = int(width - w1)
 
-        suffix = "ascending" if ascending else "descending"
-        rev_suffix = "descending" if ascending else "ascending"
+        s = f"""                 
+            {g.generate_compounded_sort(w1, ascending, start, w1)}                        
+            {g.generate_compounded_sort(w2, not ascending, w1 + start, w2)}"""
 
-        s = f"""
-            {g.vector_type()} tmp{maybe_cmp()};
-            {maybe_topbit()}  
-            
-            sort_{w1:02d}v_{suffix}({g.generate_param_list(1, w1)});
-            sort_{w2:02d}v_{rev_suffix}({g.generate_param_list(w1 + 1, w2)});"""
-
-        for r in range(w1 + 1, width + 1):
-            x = w1 + 1 - (r - w1)
-            s += f"""
+        ss = ""
+        for r in range(w1 + start, width + start):
+            x = w1 + start - (r - w1)
+            ss += f"""
             tmp = {var[r]};
             {g.crappity_crap_crap(var[x], var[r])}
             {var[r]} = {g.generate_max(var[x], var[r])};
             {var[x]} = {g.generate_min(var[x], "tmp")};"""
 
-        s += f"""
-            sort_{w1:02d}v_merge_{suffix}({g.generate_param_list(1, w1)});
-            sort_{w2:02d}v_merge_{suffix}({g.generate_param_list(w1 + 1, w2)});"""
+        s += f"""            
+        {{
+            {g.vector_type()} tmp{maybe_cmp()};
+            {maybe_topbit()}
+            {ss}
+        }}
+                        
+        {g.generate_compounded_merge(w1, ascending, start, w1)}                        
+        {g.generate_compounded_merge(w2, ascending, w1 + start, w2)}"""
 
         return s
 
     def generate_compounded_sorter(self, f, width, ascending, inline):
         g = self
         suffix = "ascending" if ascending else "descending"
-        rev_suffix = "descending" if ascending else "ascending"
         inl = "AggressiveInlining" if inline else "NoInlining"
 
         s = f"""
     [MethodImpl(MethodImplOptions.{inl} | MethodImplOptions.AggressiveOptimization)]        
     private static void sort_{width:02d}v_{suffix}({g.generate_param_def_list(width)}) {{
-        {g.generate_xv_compounded_sort(width, ascending)}
+        {g.generate_xv_compounded_sort(width, ascending, 1)}
     }}
 """
         print(s, file=f)
 
-    def generate_xv_compounded_merger(self, width, ascending):
+    def generate_xv_compounded_merger(self, width, ascending, start):
         type = self.type
         g = self
         var = self._var_names
         maybe_cmp = lambda: ", cmp" if (type == "long" or type == "ulong") else ""
         maybe_topbit = lambda: f"{g.vector_type()} topBit = Vector256.Create(1UL << 63);" if type == "ulong" else ""
 
-        suffix = "ascending" if ascending else "descending"
-
         w1 = int(next_power_of_2(width) / 2)
         w2 = int(width - w1)
 
         s = F"""
+        {{
         {g.vector_type()}  tmp{maybe_cmp()};
         {maybe_topbit()}"""
 
-        for r in range(w1 + 1, width + 1):
+        for r in range(w1 + start, width + start):
             x = r - w1
             s += f"""
             tmp = {var[x]};
@@ -460,22 +498,24 @@ namespace VxSort
             d{r:02d} = {g.generate_max(var[r], "tmp")};"""
 
         s += f"""
-        sort_{w1:02d}v_merge_{suffix}({g.generate_param_list(1, w1)});
-        sort_{w2:02d}v_merge_{suffix}({g.generate_param_list(w1 + 1, w2)});"""
+        }}   
+        
+        {g.generate_compounded_merge(w1, ascending, start, w1)}                    
+        {g.generate_compounded_merge(w2, ascending, w1 + start, w2)}   
+"""
 
         return s
 
     def generate_compounded_merger(self, f, width, ascending, inline):
         g = self
         suffix = "ascending" if ascending else "descending"
-        rev_suffix = "descending" if ascending else "ascending"
 
         inl = "AggressiveInlining" if inline else "NoInlining"
 
         s = f"""
     [MethodImpl(MethodImplOptions.{inl} | MethodImplOptions.AggressiveOptimization)]        
     private static void sort_{width:02d}v_merge_{suffix}({g.generate_param_def_list(width)}) {{
-        {g.generate_xv_compounded_merger(width, ascending)}
+        {g.generate_xv_compounded_merger(width, ascending, 1)}
     }}"""
         print(s, file=f)
 

@@ -79,7 +79,7 @@ class VectorISA(Enum):
     def __str__(self):
         return self.value
 
-def generate_all_types():
+def generate_bitonicsort_all_types():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--language", type=Language, choices=list(Language),
     #                    help="select output language: csharp/cpp/rust")
@@ -116,4 +116,4 @@ def generate_all_types():
 
 
 if __name__ == '__main__':
-    generate_all_types()
+    generate_bitonicsort_all_types()
