@@ -26,6 +26,7 @@ class AVX2BitonicISA(BitonicISA):
         }
 
         self._max_bitonic_sort_vectors = configuration.max_bitonic_sort_vectors
+        self.unroll_bitonic_sorters = configuration.unroll_bitonic_sorters
 
         self._var_names = [f"d{i:02d}" for i in range(0, self.max_bitonic_sort_vectors + 2)]
 
@@ -397,9 +398,15 @@ namespace VxSort
             //sort_{1:02d}v_merge_{suffix}({g.generate_param_list(1, start)});      
             {g.generate_1v_merge(ascending, start)}
         }}"""
+        elif width < g.unroll_bitonic_sorters:
+            return f"""
+        {{
+            //sort_{width:02d}v_merge_{suffix}({g.generate_param_list(start, numParams)}); 
+            {g.generate_xv_compounded_merger(width, ascending, start)}
+        }}"""
         else:
             return f"""
-        {{    
+        {{
             //sort_{width:02d}v_merge_{suffix}({g.generate_param_list(start, numParams)});
             sort_{width:02d}v_merge_{suffix}({g.generate_param_list(start, numParams)});
         }}"""
@@ -414,10 +421,15 @@ namespace VxSort
             //sort_{1:02d}v_{suffix}({g.generate_param_list(1, start)});      
             {g.generate_1v_sort(ascending, start)}
         }}"""
-        else:
-
+        elif width < g.unroll_bitonic_sorters:
             return f"""
-        {{                
+        {{
+            //sort_{1:02d}v_{suffix}({g.generate_param_list(start, width)});
+            {g.generate_xv_compounded_sort(width, ascending, start)}
+        }}"""
+        else:
+            return f"""
+        {{
             //sort_{width:02d}v_{suffix}({g.generate_param_list(start, numParams)});
             sort_{width:02d}v_{suffix}({g.generate_param_list(start, numParams)});
         }}"""
@@ -430,8 +442,6 @@ namespace VxSort
         maybe_cmp = lambda: ", cmp" if (type == "long" or type == "ulong") else ""
         maybe_topbit = lambda: f"\n        {g.vector_type()} topBit = Vector256.Create(1UL << 63);" if (type == "ulong") else ""
 
-        suffix = "ascending" if ascending else "descending"
-        rev_suffix = "descending" if ascending else "ascending"
         w1 = int(next_power_of_2(width) / 2)
         w2 = int(width - w1)
 
@@ -441,7 +451,7 @@ namespace VxSort
 
         ss = ""
         for r in range(w1 + start, width + start):
-            x = w1 + start - (r - w1)
+            x = w1 - (r - (w1 + start)) + (start - 1)
             ss += f"""
             tmp = {var[r]};
             {g.crappity_crap_crap(var[x], var[r])}
@@ -550,7 +560,13 @@ namespace VxSort
             s = f"      {g.vector_type()} {var[m]} = {g.get_mask_load_intrinsic('ptr', m - 1, 'mask')};"
             print(s, file=f)
 
-            s = f"      sort_{m:02d}v_ascending({g.generate_param_list(1, m)});"
+            if m < g.unroll_bitonic_sorters:
+                s = f"""
+            // sort_{m:02d}v_ascending({g.generate_param_list(1, m)});
+            {g.generate_compounded_sort(m, True, 1)}"""
+            else:
+                s = f"""
+            sort_{m:02d}v_ascending({g.generate_param_list(1, m)});"""
             print(s, file=f)
 
             for l in range(0, m-1):

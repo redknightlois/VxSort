@@ -46,8 +46,11 @@ def get_generator(vector_isa, type, configuration):
 def generate_per_type(f_header, type, vector_isa, break_inline, configuration):
     g = get_generator(vector_isa, type, configuration)
     g.generate_prologue(f_header)
-    g.generate_1v_sorters(f_header, ascending=True)
-    g.generate_1v_sorters(f_header, ascending=False)
+
+    if g.unroll_bitonic_sorters < 1:
+        g.generate_1v_sorters(f_header, ascending=True)
+        g.generate_1v_sorters(f_header, ascending=False)
+
     for width in range(2, g.max_bitonic_sort_vectors + 1):
 
         # Allow breaking the inline chain once in a while (configurable)
@@ -55,11 +58,13 @@ def generate_per_type(f_header, type, vector_isa, break_inline, configuration):
             inline = True
         else:
             inline = False
-        g.generate_compounded_sorter(f_header, width, ascending=True, inline=inline)
-        g.generate_compounded_sorter(f_header, width, ascending=False, inline=inline)
-        if width <= g.largest_merge_variant_needed():
-            g.generate_compounded_merger(f_header, width, ascending=True, inline=inline)
-            g.generate_compounded_merger(f_header, width, ascending=False, inline=inline)
+
+        if width >= configuration.unroll_bitonic_sorters:
+            g.generate_compounded_sorter(f_header, width, ascending=True, inline=inline)
+            g.generate_compounded_sorter(f_header, width, ascending=False, inline=inline)
+            if width <= g.largest_merge_variant_needed():
+                g.generate_compounded_merger(f_header, width, ascending=True, inline=inline)
+                g.generate_compounded_merger(f_header, width, ascending=False, inline=inline)
 
     g.generate_entry_points(f_header)
     g.generate_master_entry_point(f_header)
